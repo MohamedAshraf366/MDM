@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>MDM</title>
+    <link rel="stylesheet" href="ui.css" />
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <main class="popup">
+      <header class="popup-top">
+        <div class="brand">
+          <img src="icons/icon48.png" alt="" />
+          <div class="brand-copy">
+            <strong>MDM</strong>
+            <span>Download Bridge</span>
+          </div>
+        </div>
+        <span class="status is-checking" id="status">
+          <span class="status-dot"></span>
+          <span id="status-text">Checking</span>
+        </span>
+      </header>
+
+      <div class="notice" id="notice" role="status" aria-live="polite" hidden></div>
+
+      <section class="card">
+        <label class="row" for="auto-capture">
+          <span class="row-copy">
+            <strong>Send browser downloads to MDM</strong>
+            <small id="auto-capture-hint">New HTTP, HTTPS, and FTP downloads open in MDM instead of this browser.</small>
+          </span>
+          <span class="capture-toggle">
+            <span class="capture-state is-on" id="auto-capture-state">On</span>
+            <span class="switch">
+              <input type="checkbox" id="auto-capture" role="switch" checked />
+              <span class="switch-track"></span>
+            </span>
+          </span>
+        </label>
+      </section>
+
+      <section class="card">
+        <div class="card-head">
+          <div>
+            <h2>Local bridge</h2>
+            <p class="card-subtitle">Loopback-only connection to the desktop app.</p>
+          </div>
+          <button type="button" class="btn btn-small" id="test-button">Test</button>
+        </div>
+        <div class="status-line">
+          <code id="bridge-address">127.0.0.1</code>
+          <button type="button" class="link-button" id="options-button">Settings</button>
+        </div>
+      </section>
+
+      <footer class="popup-foot">
+        <span id="extension-version">MDM</span>
+        <button type="button" class="link-button" id="show-overlays">Show hidden video overlays</button>
+      </footer>
+    </main>
+    <script src="common.js"></script>
+    <script src="popup.js"></script>
+  </body>
+</html>

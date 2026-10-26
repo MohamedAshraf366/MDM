@@ -1,0 +1,48 @@
+appId: com.mdm.desktop
+productName: MDM - Mohamed Download Manager
+copyright: Copyright © 2026 MDM Contributors
+
+directories:
+  output: release
+  buildResources: assets
+
+files:
+  - dist/**/*
+  - package.json
+
+extraResources:
+  - from: assets
+    to: assets
+  - from: extension
+    to: extension
+  - from: tools
+    to: tools
+    filter:
+      - yt-dlp.exe
+      - ffmpeg.exe
+      - ffprobe.exe
+
+asar: true
+compression: normal
+
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+  icon: assets/icon.ico
+  requestedExecutionLevel: asInvoker
+
+nsis:
+  artifactName: MDM-Setup-2.4.${ext}
+  oneClick: false
+  perMachine: false
+  allowElevation: true
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: always
+  createStartMenuShortcut: true
+  shortcutName: MDM
+  uninstallDisplayName: MDM - Mohamed Download Manager
+  deleteAppDataOnUninstall: false
+  differentialPackage: true
+  include: assets/installer.nsh

@@ -1,0 +1,57 @@
+{
+  "manifest_version": 3,
+  "name": "MDM Download Bridge",
+  "version": "2.4",
+  "description": "Send downloads from your browser to MDM - Mohamed Download Manager through its authenticated local bridge.",
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "mdm@mohamed.local",
+      "strict_min_version": "121.0"
+    }
+  },
+  "permissions": [
+    "contextMenus",
+    "storage",
+    "cookies",
+    "downloads",
+    "notifications",
+    "webRequest",
+    "scripting"
+  ],
+  "host_permissions": ["http://*/*", "https://*/*"],
+  "background": {
+    "scripts": ["common.js", "background.js"]
+  },
+  "content_scripts": [
+    {
+      "matches": ["http://*/*", "https://*/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle",
+      "all_frames": true,
+      "match_about_blank": true
+    }
+  ],
+  "action": {
+    "default_title": "MDM",
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "32": "icons/icon32.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "options_ui": {
+    "page": "options.html",
+    "open_in_tab": true
+  },
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'; connect-src http://127.0.0.1:* http://localhost:*"
+  }
+}

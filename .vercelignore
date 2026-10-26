@@ -1,0 +1,10 @@
+node_modules
+website/node_modules
+release
+website/dist
+website/public/downloads/*.exe
+/src
+/assets
+/extension
+/tests
+/tools

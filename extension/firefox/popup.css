@@ -1,0 +1,78 @@
+body {
+  width: 380px;
+}
+
+.popup {
+  display: grid;
+  gap: 11px;
+  padding: 16px;
+}
+
+.popup-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 2px 2px 4px;
+}
+
+.popup-top .brand img {
+  width: 38px;
+  height: 38px;
+  border-radius: 11px;
+}
+
+.popup .card {
+  padding: 14px;
+}
+
+.popup .card h2 {
+  font-size: 13px;
+}
+
+.capture-toggle {
+  display: inline-flex;
+  align-items: center;
+  flex: none;
+  gap: 8px;
+}
+
+.capture-state {
+  min-width: 22px;
+  color: var(--muted);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-align: right;
+  text-transform: uppercase;
+}
+
+.capture-state.is-on {
+  color: var(--accent);
+}
+
+.status-line {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 9px;
+}
+
+.status-line code {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.popup-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 1px 3px 0;
+}
+
+.popup-foot span {
+  color: var(--muted);
+  font-size: 11px;
+}
