@@ -1,5 +1,6 @@
 # MDM
 MDM - Mohamed Download Manager for Windows
+
 <img width="930" height="494" alt="image" src="https://github.com/user-attachments/assets/dde6db8b-a93f-460c-9336-4d2326d89226" />
 
 A fast, local-first download manager for Windows 10/11 with 8-connection segmented transfers, Chrome/Edge/Firefox capture, queues, schedules, site rules, checksums, and HLS/DASH/YouTube downloads.
