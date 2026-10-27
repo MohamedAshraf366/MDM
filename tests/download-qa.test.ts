@@ -314,7 +314,7 @@ describe('download QA: file types over HTTP', () => {
   });
 
   it('downloads a large video with multiple segments and verifies SHA-256', async () => {
-    const data = payload(2 * 1024 * 1024, 21);
+    const data = payload(8 * 1024 * 1024, 21);
     const fixture = await createFixtureServer({ '/big-video.mp4': binaryRoute(data, { mime: 'video/mp4' }) });
     const instance = await setup();
     instance.settings.update({ patch: { defaultConnections: 4 } });
@@ -331,6 +331,23 @@ describe('download QA: file types over HTTP', () => {
     expect(record.checksumStatus).toBe('verified');
     expect(record.segments.length).toBeGreaterThanOrEqual(4);
     expect(fixture.requests.filter((request) => request.range?.startsWith('bytes=')).length).toBeGreaterThanOrEqual(4);
+    expect((await fsp.readFile(record.targetPath!)).equals(data)).toBe(true);
+  });
+
+  it('uses a single connection for files below the per-connection size floor', async () => {
+    const data = payload(512 * 1024, 22);
+    const fixture = await createFixtureServer({ '/small.bin': binaryRoute(data) });
+    const instance = await setup();
+    instance.settings.update({ patch: { defaultConnections: 8 } });
+
+    const result = await instance.manager.addDownload({
+      url: fixture.url('/small.bin'),
+      destinationDir: destinationOf(instance, 'small'),
+      startNow: true
+    });
+    const record = await waitForStatus(instance.manager, result.id, 'completed');
+
+    expect(record.segments).toHaveLength(1);
     expect((await fsp.readFile(record.targetPath!)).equals(data)).toBe(true);
   });
 

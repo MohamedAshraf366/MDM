@@ -2335,15 +2335,11 @@ kbd {
 
 .download-row {
   position: relative;
-  min-height: 65px;
+  height: 70px;
   padding: 10px 16px;
   border-bottom: 1px solid var(--border);
   cursor: pointer;
   transition: background 130ms ease;
-}
-
-.download-row:last-child {
-  border-bottom: 0;
 }
 
 .download-row:hover {

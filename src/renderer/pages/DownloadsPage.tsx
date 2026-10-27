@@ -1,4 +1,4 @@
-import { memo, useCallback, useDeferredValue, useEffect, useMemo, useState } from 'react';
+import { memo, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import type { DownloadRecord } from '../../shared/types';
 import { formatBytes, formatDate, formatEta, formatPercent, formatSpeed } from '../../shared/format';
 import { useApp } from '../app/store';
@@ -214,20 +214,86 @@ export function DownloadsPage() {
     if (focusTarget.openDetails) setDetailsId(focusTarget.id);
   }, [focusTarget, records, setSelected]);
 
+  // The page itself scrolls (`.page-scroll`), so the virtual window follows
+  // that container instead of introducing a nested scrollbar.
+  const listRef = useRef<HTMLDivElement>(null);
+  const ROW_HEIGHT = 70; // matches .download-row height in styles.css
+  const BUFFER = 5;
+  const [viewport, setViewport] = useState({ top: 0, height: 800 });
+
   useEffect(() => {
-    if (!focusTarget) return;
-    if (!visible.some((record) => record.id === focusTarget.id)) return;
+    const list = listRef.current;
+    if (!list) return;
+    const scroller = list.closest('.page-scroll') as HTMLElement | null;
+    const measure = () => {
+      const listRect = list.getBoundingClientRect();
+      const bounds = scroller
+        ? scroller.getBoundingClientRect()
+        : { top: 0, bottom: window.innerHeight };
+      const top = Math.max(0, bounds.top - listRect.top);
+      const bottom = Math.min(listRect.height, bounds.bottom - listRect.top);
+      const height = Math.max(0, bottom - top);
+      setViewport((current) =>
+        Math.abs(current.top - top) < 0.5 && Math.abs(current.height - height) < 0.5
+          ? current
+          : { top, height }
+      );
+    };
+    measure();
+    scroller?.addEventListener('scroll', measure, { passive: true });
+    window.addEventListener('resize', measure);
+    const observer = new ResizeObserver(measure);
+    observer.observe(list);
+    if (scroller) observer.observe(scroller);
+    return () => {
+      scroller?.removeEventListener('scroll', measure);
+      window.removeEventListener('resize', measure);
+      observer.disconnect();
+    };
+  }, [visible.length]);
+
+  const focusIndex = focusTarget ? visible.findIndex((record) => record.id === focusTarget.id) : -1;
+  const windowRows = useMemo(() => {
+    const first = Math.max(0, Math.floor(viewport.top / ROW_HEIGHT) - BUFFER);
+    const last = Math.min(
+      visible.length,
+      Math.ceil((viewport.top + viewport.height) / ROW_HEIGHT) + BUFFER
+    );
+    const indices: number[] = [];
+    for (let index = first; index < last; index += 1) indices.push(index);
+    // Keep the focused row mounted even when it starts outside the viewport so
+    // scrollIntoView can reach it without rendering the whole gap.
+    if (focusIndex >= 0 && (focusIndex < first || focusIndex >= last)) {
+      const focusFirst = Math.max(0, focusIndex - BUFFER);
+      const focusLast = Math.min(visible.length, focusIndex + BUFFER + 1);
+      for (let index = focusFirst; index < focusLast; index += 1) {
+        if (!indices.includes(index)) indices.push(index);
+      }
+      indices.sort((a, b) => a - b);
+    }
+    return indices.map((index) => ({ index, record: visible[index]! }));
+  }, [visible, viewport.top, viewport.height, focusIndex]);
+
+  const focusReady = !!focusTarget && visible.some((record) => record.id === focusTarget.id);
+
+  useEffect(() => {
+    if (!focusTarget || !focusReady) return;
     const nonce = focusTarget.nonce;
+    let clearTimer = 0;
     const frame = window.requestAnimationFrame(() => {
       const row = document.querySelector<HTMLElement>(
         `[data-download-id="${focusTarget.id}"]`
       );
       row?.scrollIntoView({ block: 'center', behavior: 'smooth' });
       row?.focus({ preventScroll: true });
-      clearFocusTarget(nonce);
+      // Keep the row mounted while the smooth scroll finishes.
+      clearTimer = window.setTimeout(() => clearFocusTarget(nonce), 700);
     });
-    return () => window.cancelAnimationFrame(frame);
-  }, [focusTarget, visible, clearFocusTarget]);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.clearTimeout(clearTimer);
+    };
+  }, [focusTarget, focusReady, clearFocusTarget]);
 
   const pauseOne = useCallback(
     async (record: DownloadRecord) => {
@@ -444,20 +510,26 @@ export function DownloadsPage() {
               <span>Transfer</span>
               <span className="align-right">Actions</span>
             </div>
-            <div className="download-list">
-              {visible.map((record) => (
-                <DownloadRow
-                  key={record.id}
-                  record={record}
-                  selected={selected.has(record.id)}
-                  queue={queueName(snapshot?.queues ?? [], record.queueId)}
-                  onSelect={toggleSelected}
-                  onDetails={setDetailsId}
-                  onPause={pauseOne}
-                  onResume={resumeOne}
-                  onOpen={openOne}
-                />
-              ))}
+            <div className="download-list" ref={listRef}>
+              <div style={{ height: visible.length * ROW_HEIGHT, position: 'relative' }}>
+                {windowRows.map(({ index, record }) => (
+                  <div
+                    key={record.id}
+                    style={{ position: 'absolute', top: index * ROW_HEIGHT, left: 0, right: 0 }}
+                  >
+                    <DownloadRow
+                      record={record}
+                      selected={selected.has(record.id)}
+                      queue={queueName(snapshot?.queues ?? [], record.queueId)}
+                      onSelect={toggleSelected}
+                      onDetails={setDetailsId}
+                      onPause={pauseOne}
+                      onResume={resumeOne}
+                      onOpen={openOne}
+                    />
+                  </div>
+                ))}
+              </div>
             </div>
             <div className="download-list-footer">
               <span>

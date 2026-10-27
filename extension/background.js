@@ -8,6 +8,15 @@ const isFirefox = typeof globalThis.browser !== 'undefined';
 const MENU_ID = 'mdm-send';
 const MEDIA_MENU_ID = 'mdm-media';
 
+// Some sites stream a download through a service worker inside the page. That
+// URL only exists in the browser, so an external downloader cannot fetch it and
+// cancelling the browser download would lose the file. Leave these to the browser.
+const BROWSER_ONLY_DOWNLOAD = /\/serviceWorkerDownload\//i;
+
+function isBrowserOnlyDownload(url) {
+  return BROWSER_ONLY_DOWNLOAD.test(String(url || ''));
+}
+
 // Network-level media sniffing: catches players the DOM cannot see (workers,
 // cross-origin iframes, extensionless signed URLs, blob-backed streams).
 const SNIFFED_MEDIA_TTL = 10 * 60 * 1000;
@@ -161,6 +170,7 @@ async function handleBrowserDownload(item) {
   const config = await ext.getConfig();
   const target = item.finalUrl || item.url || '';
   if (!config.autoCapture || item.byExtensionId || !/^(https?|ftp):\/\//i.test(target)) return;
+  if (isBrowserOnlyDownload(item.url) || isBrowserOnlyDownload(target)) return;
   const tab = item.tabId >= 0 ? await api.tabs.get(item.tabId).catch(() => null) : null;
   const fileName = item.filename ? item.filename.split(/[\\/]/).pop() : undefined;
   await api.downloads.pause(item.id).catch(() => undefined);

@@ -157,6 +157,27 @@ describe('database persistence', () => {
         headers: { Accept: '*/*' }
       });
       expect(saved?.segments).toHaveLength(2);
+
+      // Progress-only checkpoints update counters and segments but leave the
+      // structural columns (status, paths, logs, media state) untouched.
+      db.saveProgress('download-1', 700, 4096, 12, [
+        { index: 0, startByte: 0, endByte: 511, downloadedBytes: 512, status: 'complete' },
+        { index: 1, startByte: 512, endByte: 1023, downloadedBytes: 188, status: 'downloading' }
+      ]);
+      const progressed = db.getDownload('download-1');
+      expect(progressed).toMatchObject({
+        fileName: 'file.bin',
+        status: 'queued',
+        totalBytes: 1024,
+        downloadedBytes: 700,
+        speedBps: 4096,
+        etaSeconds: 12
+      });
+      expect(progressed?.segments).toEqual([
+        { index: 0, startByte: 0, endByte: 511, downloadedBytes: 512, status: 'complete' },
+        { index: 1, startByte: 512, endByte: 1023, downloadedBytes: 188, status: 'downloading' }
+      ]);
+
       db.updateDownload('download-1', { status: 'completed', downloadedBytes: 1024 });
       expect(db.getDownload('download-1')?.status).toBe('completed');
       db.deleteDownload('download-1');

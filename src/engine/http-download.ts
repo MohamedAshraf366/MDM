@@ -12,7 +12,7 @@ import {
 } from '../shared/validation';
 import {
   CHECKPOINT_INTERVAL_MS,
-  MIN_SEGMENT_SIZE,
+  MIN_CONNECTION_FILE_SIZE,
   PROGRESS_INTERVAL_MS,
   RESUME_SAFETY_MARGIN_BYTES,
   SEGMENT_SPLIT_THRESHOLD,
@@ -406,7 +406,9 @@ export class HttpDownloadTask {
     if (totalBytes === null || !resumable) {
       return [{ index: 0, startByte: 0, endByte: totalBytes !== null ? totalBytes - 1 : null, downloadedBytes: 0, status: 'pending' }];
     }
-    const maxUseful = Math.max(1, Math.floor(totalBytes / MIN_SEGMENT_SIZE));
+    // Small files transfer faster over one warm connection than several cold
+    // ones: a fresh TLS handshake costs more than the file itself above here.
+    const maxUseful = Math.max(1, Math.floor(totalBytes / MIN_CONNECTION_FILE_SIZE));
     const count = Math.max(1, Math.min(Math.floor(connections), maxUseful));
     if (count === 1) {
       return [{ index: 0, startByte: 0, endByte: totalBytes - 1, downloadedBytes: 0, status: 'pending' }];
@@ -594,6 +596,58 @@ export class HttpDownloadTask {
     if (this.config.cookies) headers.Cookie = this.config.cookies;
     if (this.config.referrer) headers.Referer = this.config.referrer;
 
+    const absolutePosition = start;
+    let received = 0;
+    let pending: Buffer[] = [];
+    let pendingBytes = 0;
+    let pendingOffset = absolutePosition;
+    let inflight: { promise: Promise<void>; bytes: number } | null = null;
+    const rollback = (bytes: number) => {
+      if (bytes <= 0) return;
+      segment.downloadedBytes = Math.max(0, segment.downloadedBytes - bytes);
+      this.downloadedTotal = Math.max(0, this.downloadedTotal - bytes);
+      if (this.prepared) this.prepared.downloadedBytes = this.downloadedTotal;
+    };
+    const settleInflight = async () => {
+      if (!inflight) return;
+      const current = inflight;
+      inflight = null;
+      try {
+        await current.promise;
+      } catch (error) {
+        // The failed batch and any bytes buffered after it were counted
+        // optimistically but never reached disk; rewind so a retry refetches
+        // them instead of skipping over a hole.
+        rollback(current.bytes + pendingBytes);
+        pending = [];
+        pendingBytes = 0;
+        throw error;
+      }
+    };
+    const flushPending = async (force = false) => {
+      if (!this.writer) throw new DownloadError('Download not prepared.', 'INTERNAL');
+      if (pendingBytes && (force || pendingBytes >= SEGMENT_WRITE_HIGH_WATER)) {
+        // Wait for the previous batch before reading the next one, keeping a
+        // single write in flight while still overlapping disk I/O with the
+        // network stream.
+        await settleInflight();
+        const data = pending.length === 1 ? pending[0]! : Buffer.concat(pending);
+        const bytes = pendingBytes;
+        const offset = pendingOffset;
+        pending = [];
+        pendingOffset += pendingBytes;
+        pendingBytes = 0;
+        const promise = this.writer.writeAt(offset, data).catch((error) => {
+          throw mapNetworkError(error);
+        });
+        // Observe rejection now so an in-flight failure never surfaces as an
+        // unhandled rejection before the next flush awaits it.
+        promise.catch(() => undefined);
+        inflight = { promise, bytes };
+      }
+      if (force) await settleInflight();
+    };
+
     let releaseHost: (() => void) | null = null;
     let response: HttpResponse | undefined;
     try {
@@ -660,23 +714,6 @@ export class HttpDownloadTask {
         expectedLength = null;
       }
 
-      const absolutePosition = start;
-      let received = 0;
-      let pending: Buffer[] = [];
-      let pendingBytes = 0;
-      let pendingOffset = absolutePosition;
-      const flushPending = async (force = false) => {
-        if (!pendingBytes || (!force && pendingBytes < SEGMENT_WRITE_HIGH_WATER)) return;
-        if (!this.writer) throw new DownloadError('Download not prepared.', 'INTERNAL');
-        try {
-          await this.writer.writeAt(pendingOffset, pendingBytes === 1 && pending[0] ? pending[0] : Buffer.concat(pending));
-        } catch (error) {
-          throw mapNetworkError(error);
-        }
-        pending = [];
-        pendingOffset += pendingBytes;
-        pendingBytes = 0;
-      };
       for await (const rawChunk of stream) {
         if (this.paused || this.canceled) throw new DownloadError('The download was stopped.', 'ABORTED');
         let buffer = Buffer.isBuffer(rawChunk) ? rawChunk : Buffer.from(rawChunk);
@@ -725,6 +762,12 @@ export class HttpDownloadTask {
       }
       segment.status = 'complete';
     } finally {
+      // Never leave a segment write running past the request that owns it.
+      try {
+        await settleInflight();
+      } catch {
+        // A write error already surfaced (or the transfer is being aborted).
+      }
       response?.close();
       releaseHost?.();
     }
@@ -865,7 +908,8 @@ export class HttpDownloadTask {
     status: EngineCheckpoint['status'],
     error?: string,
     errorCode?: string,
-    checksumStatus?: ChecksumStatus
+    checksumStatus?: ChecksumStatus,
+    progressOnly = false
   ): EngineCheckpoint | null {
     if (!this.prepared) return null;
     this.prepared.downloadedBytes = this.sumDownloaded();
@@ -877,7 +921,8 @@ export class HttpDownloadTask {
       attempts: this.attempts,
       error,
       errorCode,
-      checksumStatus
+      checksumStatus,
+      progressOnly
     };
   }
 
@@ -886,7 +931,10 @@ export class HttpDownloadTask {
     if (!force && now - this.lastCheckpointAt < CHECKPOINT_INTERVAL_MS) {
       return this.checkpointChain;
     }
-    const checkpoint = this.buildCheckpoint(status);
+    // Periodic checkpoints only advance byte counters. Forced ones coincide
+    // with structural changes (segment split/reset, retry, finalize), so they
+    // must persist the entire row.
+    const checkpoint = this.buildCheckpoint(status, undefined, undefined, undefined, !force);
     if (!checkpoint) return this.checkpointChain;
     this.lastCheckpointAt = now;
     this.checkpointChain = this.checkpointChain

@@ -610,7 +610,8 @@ export class FtpDownloadTask {
       status: 'downloading',
       downloadedBytes: this.prepared.downloadedBytes,
       totalBytes: this.prepared.totalBytes,
-      attempts: this.attempts
+      attempts: this.attempts,
+      progressOnly: !force
     };
     this.checkpointChain = this.checkpointChain
       .then(() => this.callbacks.onCheckpoint(checkpoint))

@@ -241,7 +241,7 @@ function buildHost(): ManagerHost {
 function wireManager(downloadManager: DownloadManager): void {
   downloadManager.on('changed', scheduleSnapshot);
   downloadManager.on('progress', (event) => {
-    send(PROGRESS_EVENT, event);
+    if (isWindowVisible()) send(PROGRESS_EVENT, event);
     scheduleTaskbarUpdate();
   });
   downloadManager.on('updated', (record) => {
@@ -562,6 +562,10 @@ function applyLoginItem(settings: AppSettings): void {
 function windowIsActive(): boolean {
   if (!mainWindow || mainWindow.isDestroyed()) return false;
   return mainWindow.isVisible() && !mainWindow.isMinimized() && mainWindow.isFocused();
+}
+
+function isWindowVisible(): boolean {
+  return !!mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible();
 }
 
 function showNotification(title: string, body: string, downloadId?: string): void {

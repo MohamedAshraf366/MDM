@@ -105,6 +105,11 @@ export interface EngineCheckpoint {
   errorCode?: string;
   checksumStatus?: ChecksumStatus;
   mediaState?: string;
+  /**
+   * True when only byte counters and segment haven't structurally changed.
+   * The manager may then skip rewriting immutable download columns.
+   */
+  progressOnly?: boolean;
 }
 
 export interface CompletedDownload {

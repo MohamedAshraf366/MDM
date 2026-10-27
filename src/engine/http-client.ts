@@ -6,6 +6,7 @@ import type { LookupFunction } from 'node:net';
 import { HttpProxyAgent } from 'http-proxy-agent';
 import { HttpsProxyAgent } from 'https-proxy-agent';
 import { DownloadError, mapNetworkError } from './errors';
+import { getTrustedCAs } from './tls-trust';
 import { APP_SHORT_NAME, APP_VERSION } from '../shared/defaults';
 import { redactUrl } from '../shared/validation';
 
@@ -155,6 +156,21 @@ function defaultCookiePath(pathname: string): string {
   return trimmed || '/';
 }
 
+export function setDirectAgentMaxSockets(maxSockets: number): void {
+  if (directHttpAgent) {
+    directHttpAgent.maxSockets = maxSockets;
+    directHttpAgent.maxFreeSockets = maxSockets;
+  }
+  if (directHttpsAgent) {
+    directHttpsAgent.maxSockets = maxSockets;
+    directHttpsAgent.maxFreeSockets = maxSockets;
+  }
+  if (insecureHttpsAgent) {
+    insecureHttpsAgent.maxSockets = maxSockets;
+    insecureHttpsAgent.maxFreeSockets = maxSockets;
+  }
+}
+
 let directHttpAgent: http.Agent | null = null;
 let directHttpsAgent: https.Agent | null = null;
 let insecureHttpsAgent: https.Agent | null = null;
@@ -208,7 +224,8 @@ export class HttpClient {
       } as http.AgentOptions);
       this.proxyHttpsAgent = new HttpsProxyAgent(options.proxy.url, {
         keepAlive: true,
-        maxSockets: this.options.maxSocketsPerHost
+        maxSockets: this.options.maxSocketsPerHost,
+        ca: getTrustedCAs()
       } as https.AgentOptions);
     } else {
       this.proxyHttpAgent = null;
@@ -487,7 +504,8 @@ export class HttpClient {
         scheduling: 'fifo',
         autoSelectFamily: true,
         autoSelectFamilyAttemptTimeout: 300,
-        rejectUnauthorized: true
+        rejectUnauthorized: true,
+        ca: getTrustedCAs()
       });
     }
     return directHttpsAgent;

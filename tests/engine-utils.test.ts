@@ -86,6 +86,47 @@ describe('rate limiting primitives', () => {
     release();
   });
 
+  it('applies limit changes without starving queued or active holders', async () => {
+    const semaphore = new Semaphore(1);
+    const releaseFirst = await semaphore.acquire();
+
+    let secondAcquired = false;
+    let releaseSecond: (() => void) | null = null;
+    const second = semaphore.acquire().then((release) => {
+      secondAcquired = true;
+      releaseSecond = release;
+    });
+
+    // Raising the limit releases a queued waiter immediately.
+    semaphore.setMax(2);
+    await second;
+    expect(secondAcquired).toBe(true);
+    expect(semaphore.active).toBe(2);
+
+    // Lowering below the active count must not revoke running holders; the
+    // next acquisition waits until enough slots drain.
+    semaphore.setMax(1);
+    expect(semaphore.active).toBe(2);
+    let thirdAcquired = false;
+    let releaseThird: (() => void) | null = null;
+    const third = semaphore.acquire().then((release) => {
+      thirdAcquired = true;
+      releaseThird = release;
+    });
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(thirdAcquired).toBe(false);
+
+    releaseFirst();
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(thirdAcquired).toBe(false);
+
+    releaseSecond!();
+    await third;
+    expect(thirdAcquired).toBe(true);
+    releaseThird!();
+    expect(semaphore.active).toBe(0);
+  });
+
   it('computes bounded exponential backoff', () => {
     expect(backoffDelay(1, 1000, 250)).toBe(250);
     expect(backoffDelay(1, 1000)).toBeGreaterThanOrEqual(700);

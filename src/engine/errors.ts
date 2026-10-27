@@ -85,7 +85,7 @@ export function friendlyErrorMessage(error: unknown): string {
       case 'TLS':
         return 'The secure connection could not be verified (the server certificate is invalid, self-signed, or missing a certificate chain). For trusted but misconfigured servers, enable Allow invalid TLS certificates in the download settings.';
       case 'TLS_CHAIN':
-        return 'The server presented a certificate chain that could not be verified. This can be temporary on CDN edges; retry the download. If it persists, enable Allow invalid TLS certificates only if you trust the server.';
+        return 'The server certificate chain could not be verified. Common causes: antivirus, firewall or proxy software that re-signs HTTPS traffic (its root certificate must be installed in the operating system, then restart MDM), a server that sends an incomplete chain, or a wrong system clock. It can also be temporary on CDN edges, so retry once. If it persists, allow MDM in your security software, or enable Allow invalid TLS certificates for this download only if you trust the server.';
       case 'TLS_HANDSHAKE':
         return 'The secure connection could not be established (TLS handshake failed). This is often temporary; retry the download.';
       case 'PROXY':

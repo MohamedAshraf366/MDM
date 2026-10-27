@@ -1040,7 +1040,8 @@
     if (!(video instanceof HTMLVideoElement) || video.closest('[data-mdm-ignore]')) return false;
     if (video.closest('[data-ad], .video-ads, .ytp-ad-module, #ad-container')) return false;
     const rect = video.getBoundingClientRect();
-    if (rect.width < 100 || rect.height < 60) return false;
+    // Skip tiny sub-frames (mostly ads) under 300x200
+    if (rect.width < 300 || rect.height < 200) return false;
     const style = getComputedStyle(video);
     if (style.display === 'none' || style.visibility === 'hidden') return false;
     if (Number.isFinite(video.duration) && video.duration > 0 && video.duration < 2) return false;
@@ -1651,6 +1652,11 @@
       for (const instance of Array.from(generic.instances.values())) genericDestroy(instance);
       return;
     }
+    // Skip scanning if no instances and no need to discover new ones
+    if (generic.instances.size === 0) {
+      // Quick check: if no video elements in document, skip full scan
+      if (!document.querySelector('video')) return;
+    }
     const seen = new Set();
     for (const video of collectVideos()) {
       if (!(video instanceof HTMLVideoElement)) continue;
@@ -1669,12 +1675,38 @@
     for (const [video, instance] of generic.instances) {
       if (!seen.has(video) || !video.isConnected) genericDestroy(instance);
     }
+    // If no instances after scan, we can skip future scans until events trigger them
   }
 
   function initGeneric() {
     if (globalThis.__mdmGenericOverlay) return;
     globalThis.__mdmGenericOverlay = true;
-    const observer = new MutationObserver(scheduleGenericScan);
+    const observer = new MutationObserver((mutations) => {
+      let shouldScan = false;
+      for (const mutation of mutations) {
+        if (mutation.type === 'childList') {
+          for (const node of mutation.addedNodes) {
+            if (node.nodeType === Node.ELEMENT_NODE) {
+              const el = node;
+              if (el.tagName === 'VIDEO' || el.tagName === 'IFRAME' ||
+                  el.querySelector?.('video, iframe, source[src]')) {
+                shouldScan = true;
+                break;
+              }
+            }
+          }
+        } else if (mutation.type === 'attributes' && mutation.attributeName === 'src') {
+          const target = mutation.target;
+          if (target instanceof HTMLVideoElement || target instanceof HTMLSourceElement ||
+              target instanceof HTMLIFrameElement) {
+            shouldScan = true;
+            break;
+          }
+        }
+        if (shouldScan) break;
+      }
+      if (shouldScan) scheduleGenericScan();
+    });
     let positionFrame = 0;
     let ticks = 0;
     const positionAll = () => {
@@ -1714,6 +1746,8 @@
     });
     setInterval(() => {
       if (document.hidden) return;
+      // Stop interval when no instances to manage
+      if (generic.instances.size === 0) return;
       for (const instance of generic.instances.values()) {
         genericUpdate(instance);
         genericPosition(instance);
@@ -1732,9 +1766,10 @@
     window.addEventListener('resize', () => mount(), { passive: true });
     window.addEventListener('scroll', () => requestAnimationFrame(applyYouTubePosition), { passive: true, capture: true });
     document.addEventListener('fullscreenchange', () => requestAnimationFrame(applyYouTubePosition));
+    // Fallback poll at 5s; yt-navigate-finish and yt-page-data-updated handle navigation
     setInterval(() => {
       if (!document.hidden) sync(false);
-    }, 1000);
+    }, 5000);
     if (document.readyState === 'loading') {
       document.addEventListener('DOMContentLoaded', () => sync(false), { once: true });
     } else {

@@ -638,6 +638,38 @@ export class AppDatabase {
     });
   }
 
+  /**
+   * Cheap checkpoint for periodic progress: four download columns plus one
+   * prepared upsert per segment. Real state changes keep using
+   * saveCheckpoint so logs, media state, and segment structure stay durable.
+   */
+  saveProgress(
+    id: string,
+    downloadedBytes: number,
+    speedBps: number,
+    etaSeconds: number | null,
+    segments: DownloadSegment[]
+  ): void {
+    const update = this.prep(
+      'UPDATE downloads SET downloaded_bytes = ?, speed_bps = ?, eta_seconds = ?, updated_at = ? WHERE id = ?'
+    );
+    const upsert = this.prep(
+      `INSERT INTO download_segments (download_id, idx, start_byte, end_byte, downloaded_bytes, status)
+       VALUES (?, ?, ?, ?, ?, ?)
+       ON CONFLICT(download_id, idx) DO UPDATE SET
+         start_byte = excluded.start_byte,
+         end_byte = excluded.end_byte,
+         downloaded_bytes = excluded.downloaded_bytes,
+         status = excluded.status`
+    );
+    this.transaction(() => {
+      update.run(downloadedBytes, speedBps, etaSeconds, now(), id);
+      for (const segment of segments) {
+        upsert.run(id, segment.index, segment.startByte, segment.endByte, segment.downloadedBytes, segment.status);
+      }
+    });
+  }
+
   replaceSegments(downloadId: string, segments: DownloadSegment[]): void {
     this.connection.prepare('DELETE FROM download_segments WHERE download_id = ?').run(downloadId);
     const insert = this.connection.prepare(

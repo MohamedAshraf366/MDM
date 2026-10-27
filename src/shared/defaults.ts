@@ -127,9 +127,11 @@ export const APP_SHORT_NAME = 'MDM';
 export const APP_VERSION = '2.4';
 export const BRIDGE_DEFAULT_PORT = 41731;
 export const MAX_REDIRECTS = 10;
-export const MIN_SEGMENT_SIZE = 256 * 1024;
+/** Small files finish faster over one warm connection than several cold ones. */
+export const MIN_CONNECTION_FILE_SIZE = 2 * 1024 * 1024;
 export const SEGMENT_WRITE_HIGH_WATER = 1024 * 1024;
 export const SEGMENT_SPLIT_THRESHOLD = 4 * 1024 * 1024;
-export const RESUME_SAFETY_MARGIN_BYTES = 1024 * 1024;
+/** Covers one buffered batch plus the write that may still be in flight. */
+export const RESUME_SAFETY_MARGIN_BYTES = 2 * SEGMENT_WRITE_HIGH_WATER;
 export const PROGRESS_INTERVAL_MS = 400;
-export const CHECKPOINT_INTERVAL_MS = 1_500;
+export const CHECKPOINT_INTERVAL_MS = 3_000;

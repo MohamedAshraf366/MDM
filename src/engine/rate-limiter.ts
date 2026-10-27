@@ -72,12 +72,23 @@ export class TokenBucket {
 
 export class Semaphore {
   private available: number;
-  private readonly max: number;
+  private max: number;
   private queue: Array<() => void> = [];
 
   constructor(max: number) {
     this.max = Math.max(1, Math.floor(max));
     this.available = this.max;
+  }
+
+  setMax(max: number): void {
+    const newMax = Math.max(1, Math.floor(max));
+    const delta = newMax - this.max;
+    this.max = newMax;
+    this.available += delta;
+    while (this.available > 0 && this.queue.length) {
+      this.available--;
+      this.queue.shift()!();
+    }
   }
 
   async acquire(signal?: AbortSignal): Promise<() => void> {
@@ -117,11 +128,14 @@ export class Semaphore {
   }
 
   private releaseSlot(): void {
-    const next = this.queue.shift();
-    if (next) {
-      next();
-    } else {
-      this.available = Math.min(this.max, this.available + 1);
+    // Raising `available` first and only then waking waiters lets a lowered
+    // limit take effect as existing holders finish: while the active count
+    // still exceeds `max`, released slots are absorbed instead of being
+    // handed to a queued waiter.
+    this.available = Math.min(this.max, this.available + 1);
+    while (this.available > 0 && this.queue.length) {
+      this.available--;
+      this.queue.shift()!();
     }
   }
 
@@ -141,7 +155,7 @@ export class HostLimiter {
   setLimit(limit: number): void {
     this.limit = Math.max(1, limit);
     for (const semaphore of this.hosts.values()) {
-      (semaphore as unknown as { max: number }).max = this.limit;
+      semaphore.setMax(this.limit);
     }
   }
 

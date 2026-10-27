@@ -52,7 +52,8 @@ import type { SettingsService } from './settings';
 import type { AppLogger } from './logger';
 import {
   HttpClient,
-  type ResolvedProxy
+  type ResolvedProxy,
+  setDirectAgentMaxSockets
 } from '../engine/http-client';
 import { HostLimiter, TokenBucket } from '../engine/rate-limiter';
 import { DownloadError, friendlyErrorMessage, mapNetworkError } from '../engine/errors';
@@ -192,7 +193,7 @@ export class DownloadManager extends EventEmitter {
   }
 
   getRecords(): DownloadRecord[] {
-    return Array.from(this.downloads.values()).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    return Array.from(this.downloads.values()).sort((a, b) => (b.createdAt > a.createdAt ? 1 : -1));
   }
 
   getActiveRecords(): DownloadRecord[] {
@@ -1288,6 +1289,7 @@ export class DownloadManager extends EventEmitter {
     this.probeCache.clear();
     this.globalLimiter.setRate(settings.globalSpeedLimitBps);
     this.hostLimiter.setLimit(settings.maxConnectionsPerHost);
+    setDirectAgentMaxSockets(settings.maxConnectionsPerHost);
     const connections = clampInt(settings.defaultConnections, 1, 32);
     for (const record of this.getRecords()) {
       if (record.connections === connections || record.status === 'completed' || record.status === 'canceled') continue;
@@ -1561,6 +1563,15 @@ export class DownloadManager extends EventEmitter {
     // paused state after the user resumed (or the record moved on) — that would
     // deadlock the download outside the queue pump.
     if (checkpoint.status === 'paused' && record.status !== 'paused') return;
+
+    const isProgressOnly = checkpoint.progressOnly === true &&
+      checkpoint.status === 'downloading' &&
+      !checkpoint.error &&
+      !checkpoint.errorCode &&
+      !checkpoint.checksumStatus &&
+      checkpoint.mediaState === undefined;
+
+    // Update in-memory record for progress events and UI
     record.finalUrl = checkpoint.prepared.finalUrl;
     record.fileName = checkpoint.prepared.fileName;
     record.destinationDir = checkpoint.prepared.destinationDir;
@@ -1584,32 +1595,43 @@ export class DownloadManager extends EventEmitter {
       record.etaSeconds = null;
     }
     record.updatedAt = new Date().toISOString();
+
     try {
-      this.db.saveCheckpoint(
-        record.id,
-        {
-          finalUrl: record.finalUrl,
-          fileName: record.fileName,
-          destinationDir: record.destinationDir,
-          targetPath: record.targetPath,
-          tempPath: record.tempPath,
-          totalBytes: record.totalBytes,
-          downloadedBytes: record.downloadedBytes,
-          resumable: record.resumable,
-          etag: record.etag,
-          lastModified: record.lastModified,
-          mimeType: record.mimeType,
-          mediaStateJson: record.mediaState,
-          checksumStatus: record.checksumStatus,
-          error: record.error,
-          errorCode: record.errorCode,
-          retryCount: record.retryCount,
-          speedBps: record.speedBps,
-          etaSeconds: record.etaSeconds,
-          recordLogJson: JSON.stringify(record.recordLog)
-        },
-        record.segments
-      );
+      if (isProgressOnly) {
+        this.db.saveProgress(
+          record.id,
+          record.downloadedBytes,
+          record.speedBps,
+          record.etaSeconds,
+          record.segments
+        );
+      } else {
+        this.db.saveCheckpoint(
+          record.id,
+          {
+            finalUrl: record.finalUrl,
+            fileName: record.fileName,
+            destinationDir: record.destinationDir,
+            targetPath: record.targetPath,
+            tempPath: record.tempPath,
+            totalBytes: record.totalBytes,
+            downloadedBytes: record.downloadedBytes,
+            resumable: record.resumable,
+            etag: record.etag,
+            lastModified: record.lastModified,
+            mimeType: record.mimeType,
+            mediaStateJson: record.mediaState,
+            checksumStatus: record.checksumStatus,
+            error: record.error,
+            errorCode: record.errorCode,
+            retryCount: record.retryCount,
+            speedBps: record.speedBps,
+            etaSeconds: record.etaSeconds,
+            recordLogJson: JSON.stringify(record.recordLog)
+          },
+          record.segments
+        );
+      }
     } catch (error) {
       this.logger.warn('downloads', `Failed to save checkpoint: ${(error as Error).message}`);
     }

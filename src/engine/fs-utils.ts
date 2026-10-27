@@ -1,8 +1,31 @@
 import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
+import { spawn } from 'node:child_process';
 import { DownloadError } from './errors';
 import { sanitizeFileName } from '../shared/validation';
+import { MIN_CONNECTION_FILE_SIZE } from '../shared/defaults';
+
+function enableSparseFlag(filePath: string): Promise<void> {
+  return new Promise((resolve) => {
+    // Best-effort: ignore failures on unsupported filesystems (FAT32, exFAT, network drives)
+    // and cases where the file is already sparse or lacks permission.
+    let settled = false;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve();
+    };
+    const proc = spawn('fsutil', ['sparse', 'setflag', filePath], {
+      windowsHide: true,
+      stdio: 'ignore'
+    });
+    const timer = setTimeout(finish, 2000);
+    proc.on('error', finish);
+    proc.on('close', finish);
+  });
+}
 
 export class SparseFileWriter {
   private handle: fsp.FileHandle | null = null;
@@ -20,6 +43,12 @@ export class SparseFileWriter {
       existed = false;
     }
     this.handle = existed ? await fsp.open(this.filePath, 'r+') : await fsp.open(this.filePath, 'w+');
+    // Best-effort: mark large files as sparse on NTFS before extending them to
+    // the full size, so first writes at high offsets do not zero-fill the gap.
+    // Small sequential files gain nothing and skip the fsutil round-trip.
+    if (process.platform === 'win32' && totalBytes !== null && totalBytes >= MIN_CONNECTION_FILE_SIZE) {
+      await enableSparseFlag(this.filePath);
+    }
     if (totalBytes !== null && totalBytes > 0) {
       await this.handle.truncate(totalBytes);
     } else if (!existed) {
