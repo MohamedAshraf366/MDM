@@ -529,7 +529,12 @@ export class FtpDownloadTask {
       this.config.conflictPolicy,
       reservedPathsExcept(this.reservedSet(), this.prepared.targetPath)
     );
-    const placed = await atomicPlace(this.prepared.tempPath, finalPath, this.config.conflictPolicy === 'overwrite');
+    const placed = await atomicPlace(
+      this.prepared.tempPath,
+      finalPath,
+      this.config.conflictPolicy === 'overwrite',
+      { sourceUrl: this.config.url, referrer: this.config.referrer }
+    );
     this.prepared.targetPath = placed;
     this.prepared.downloadedBytes = total;
     this.prepared.totalBytes = total;

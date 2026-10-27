@@ -928,7 +928,12 @@ export class YtDlpDownloadTask {
     this.speedBps = 0;
     this.refreshSegment();
     this.emitProgress('finalizing');
-    const placed = await atomicPlace(output, this.prepared.targetPath, this.config.conflictPolicy === 'overwrite');
+    const placed = await atomicPlace(
+      output,
+      this.prepared.targetPath,
+      this.config.conflictPolicy === 'overwrite',
+      { sourceUrl: this.config.url, referrer: this.config.referrer }
+    );
     this.prepared.fileName = path.basename(placed);
     this.prepared.targetPath = placed;
     this.prepared.totalBytes = total;

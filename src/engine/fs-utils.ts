@@ -214,7 +214,61 @@ export async function safeUnlink(target: string): Promise<void> {
   }
 }
 
-export async function atomicPlace(tempPath: string, targetPath: string, overwrite: boolean): Promise<string> {
+export type DownloadOrigin = { sourceUrl: string; referrer?: string };
+
+function zoneUrl(raw: string | undefined): string | null {
+  if (!raw) return null;
+  try {
+    const url = new URL(raw);
+    if (!/^(https?|ftp):$/.test(url.protocol)) return null;
+    // The stream travels with the file, so keep signed tokens and logins out of it.
+    url.username = '';
+    url.password = '';
+    url.search = '';
+    url.hash = '';
+    return url.toString();
+  } catch {
+    return null;
+  }
+}
+
+/** Contents of the Zone.Identifier stream that marks a file as coming from the Internet (zone 3). */
+export function buildZoneIdentifier(origin: DownloadOrigin): string {
+  const lines = ['[ZoneTransfer]', 'ZoneId=3'];
+  const referrer = zoneUrl(origin.referrer);
+  if (referrer) lines.push(`ReferrerUrl=${referrer}`);
+  const host = zoneUrl(origin.sourceUrl);
+  if (host) lines.push(`HostUrl=${host}`);
+  return `${lines.join('\r\n')}\r\n`;
+}
+
+/**
+ * Windows SmartScreen, Office Protected View and the "Open File - Security
+ * Warning" prompt rely on this "Mark of the Web" stream, which browsers write
+ * and a plain file write does not. Best effort: FAT, exFAT and some network
+ * shares have no alternate data streams.
+ */
+async function markFromInternet(filePath: string, origin: DownloadOrigin): Promise<void> {
+  if (process.platform !== 'win32' || process.env.MDM_DISABLE_MOTW === '1') return;
+  try {
+    await fsp.writeFile(`${filePath}:Zone.Identifier`, buildZoneIdentifier(origin), 'utf8');
+  } catch {
+    // Not supported on this volume.
+  }
+}
+
+export async function atomicPlace(
+  tempPath: string,
+  targetPath: string,
+  overwrite: boolean,
+  origin?: DownloadOrigin
+): Promise<string> {
+  const placed = await placeFile(tempPath, targetPath, overwrite);
+  if (origin) await markFromInternet(placed, origin);
+  return placed;
+}
+
+async function placeFile(tempPath: string, targetPath: string, overwrite: boolean): Promise<string> {
   if (overwrite) {
     await safeUnlink(targetPath);
   }

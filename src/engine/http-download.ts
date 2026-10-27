@@ -854,7 +854,12 @@ export class HttpDownloadTask {
     );
     let placedPath: string;
     try {
-      placedPath = await atomicPlace(this.prepared.tempPath, finalPath, this.config.conflictPolicy === 'overwrite');
+      placedPath = await atomicPlace(
+        this.prepared.tempPath,
+        finalPath,
+        this.config.conflictPolicy === 'overwrite',
+        { sourceUrl: this.config.url, referrer: this.config.referrer }
+      );
     } catch (error) {
       throw mapNetworkError(error);
     }

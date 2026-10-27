@@ -3,7 +3,15 @@ import fsp from 'node:fs/promises';
 import { XMLParser } from 'fast-xml-parser';
 import type { MediaFormat, MediaProbeResult, ChecksumStatus } from '../shared/types';
 import { DownloadError, friendlyErrorMessage, isRetryableNetworkError, mapNetworkError } from './errors';
-import { CookieJar as CookieJarClass, contentLength, httpStatusError, type CookieJar, type HttpResponse } from './http-client';
+import {
+  CookieJar as CookieJarClass,
+  contentLength,
+  httpStatusError,
+  sharesCredentialScope,
+  stripSensitiveHeaders,
+  type CookieJar,
+  type HttpResponse
+} from './http-client';
 import {
   atomicPlace,
   checkDiskSpace,
@@ -898,8 +906,15 @@ export class MediaDownloadTask {
 
   private async fetchMediaSegment(descriptor: MediaSegmentDescriptor): Promise<void> {
     if (!this.writer || !this.prepared) throw new DownloadError('Media download not prepared.', 'INTERNAL');
-    const headers: Record<string, string> = { ...this.config.headers };
-    if (this.config.cookies) headers.Cookie = this.config.cookies;
+    // A manifest can list segments on any host. Only the hosts the user actually
+    // opened (the page and the manifest) receive the captured credentials.
+    const trusted =
+      sharesCredentialScope(this.config.url, descriptor.url) ||
+      sharesCredentialScope(this.prepared.finalUrl, descriptor.url);
+    const headers: Record<string, string> = trusted
+      ? { ...this.config.headers }
+      : stripSensitiveHeaders(this.config.headers);
+    if (this.config.cookies && trusted) headers.Cookie = this.config.cookies;
     if (this.config.referrer) headers.Referer = this.config.referrer;
     if (descriptor.rangeStart !== undefined && descriptor.rangeEnd !== undefined) {
       headers.Range = `bytes=${descriptor.rangeStart}-${descriptor.rangeEnd}`;
@@ -996,7 +1011,12 @@ export class MediaDownloadTask {
       this.config.conflictPolicy,
       reservedPathsExcept(this.reservedSet(), this.prepared.targetPath)
     );
-    const placed = await atomicPlace(this.prepared.tempPath, finalPath, this.config.conflictPolicy === 'overwrite');
+    const placed = await atomicPlace(
+      this.prepared.tempPath,
+      finalPath,
+      this.config.conflictPolicy === 'overwrite',
+      { sourceUrl: this.config.url, referrer: this.config.referrer }
+    );
     this.prepared.targetPath = placed;
     await this.saveCheckpoint(true);
     return {
