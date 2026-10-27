@@ -1040,8 +1040,10 @@
     if (!(video instanceof HTMLVideoElement) || video.closest('[data-mdm-ignore]')) return false;
     if (video.closest('[data-ad], .video-ads, .ytp-ad-module, #ad-container')) return false;
     const rect = video.getBoundingClientRect();
-    // Skip tiny sub-frames (mostly ads) under 300x200
-    if (rect.width < 300 || rect.height < 200) return false;
+    // Tiny players inside sub-frames are mostly ads; top-level pages keep the
+    // original small-player threshold so mobile-sized and embedded videos still work.
+    const inSubFrame = window !== window.top;
+    if (rect.width < (inSubFrame ? 300 : 100) || rect.height < (inSubFrame ? 200 : 60)) return false;
     const style = getComputedStyle(video);
     if (style.display === 'none' || style.visibility === 'hidden') return false;
     if (Number.isFinite(video.duration) && video.duration > 0 && video.duration < 2) return false;
@@ -1652,11 +1654,6 @@
       for (const instance of Array.from(generic.instances.values())) genericDestroy(instance);
       return;
     }
-    // Skip scanning if no instances and no need to discover new ones
-    if (generic.instances.size === 0) {
-      // Quick check: if no video elements in document, skip full scan
-      if (!document.querySelector('video')) return;
-    }
     const seen = new Set();
     for (const video of collectVideos()) {
       if (!(video instanceof HTMLVideoElement)) continue;
@@ -1675,7 +1672,6 @@
     for (const [video, instance] of generic.instances) {
       if (!seen.has(video) || !video.isConnected) genericDestroy(instance);
     }
-    // If no instances after scan, we can skip future scans until events trigger them
   }
 
   function initGeneric() {
@@ -1709,6 +1705,7 @@
     });
     let positionFrame = 0;
     let ticks = 0;
+    let idleTicks = 0;
     const positionAll = () => {
       if (positionFrame) return;
       positionFrame = requestAnimationFrame(() => {
@@ -1746,8 +1743,13 @@
     });
     setInterval(() => {
       if (document.hidden) return;
-      // Stop interval when no instances to manage
-      if (generic.instances.size === 0) return;
+      // With nothing on screen, poll slowly for new players. Videos inside
+      // shadow roots raise no light-DOM mutation and their media events do not
+      // reach document listeners, so this poll is the only way to find them.
+      if (generic.instances.size === 0) {
+        if (++idleTicks % 4 === 0) genericScan();
+        return;
+      }
       for (const instance of generic.instances.values()) {
         genericUpdate(instance);
         genericPosition(instance);

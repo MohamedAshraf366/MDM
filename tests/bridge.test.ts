@@ -130,6 +130,27 @@ describe('browser bridge', () => {
     expect(preflight.headers['access-control-allow-methods']).toContain('POST');
   });
 
+  it('rejects requests addressed to a hostname other than loopback (DNS rebinding)', async () => {
+    const { bridge } = await harness();
+    const rebound = await request(bridge, '/health', {
+      token: TOKEN,
+      headers: { Host: `attacker.example:${bridge.port}` }
+    });
+    expect(rebound.status).toBe(403);
+
+    const preflight = await request(bridge, '/download', {
+      method: 'OPTIONS',
+      headers: { Host: `attacker.example:${bridge.port}` }
+    });
+    expect(preflight.status).toBe(403);
+
+    const localhost = await request(bridge, '/health', {
+      token: TOKEN,
+      headers: { Host: `localhost:${bridge.port}` }
+    });
+    expect(localhost.status).toBe(200);
+  });
+
   it('pairs browser extensions without exposing the token to websites', async () => {
     const { bridge } = await harness();
     const denied = await request(bridge, '/pair');

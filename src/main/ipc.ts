@@ -1,5 +1,6 @@
 import { app, BrowserWindow, dialog, ipcMain, shell, type IpcMainInvokeEvent } from 'electron';
 import path from 'node:path';
+import { systemExecutable } from '../engine/win-tools';
 import type {
   AppInfo,
   DownloadPriority,
@@ -170,7 +171,7 @@ export async function performSystemShutdown(logger: AppLogger): Promise<void> {
     throw new UserFacingError('Automatic shutdown is only supported on Windows.');
   }
   const { spawn } = await import('node:child_process');
-  const child = spawn('shutdown.exe', ['/s', '/t', '60', '/c', 'MDM: downloads complete'], {
+  const child = spawn(systemExecutable('shutdown.exe'), ['/s', '/t', '60', '/c', 'MDM: downloads complete'], {
     detached: true,
     stdio: 'ignore',
     windowsHide: true

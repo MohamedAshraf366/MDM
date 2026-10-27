@@ -156,6 +156,32 @@ function defaultCookiePath(pathname: string): string {
   return trimmed || '/';
 }
 
+const SENSITIVE_HEADER_PATTERN = /authorization|cookie|proxy-authorization|x-api-key|api-key/i;
+
+/** Copy of `headers` without anything that carries credentials. */
+export function stripSensitiveHeaders(headers: Record<string, string>): Record<string, string> {
+  const result: Record<string, string> = {};
+  for (const [name, value] of Object.entries(headers)) {
+    if (!SENSITIVE_HEADER_PATTERN.test(name)) result[name] = value;
+  }
+  return result;
+}
+
+/**
+ * Credentials captured for one site must not follow a redirect to another host
+ * or from HTTPS down to plain HTTP.
+ */
+export function sharesCredentialScope(origin: string, target: string): boolean {
+  try {
+    const from = new URL(origin);
+    const to = new URL(target);
+    if (from.hostname.toLowerCase() !== to.hostname.toLowerCase()) return false;
+    return !(from.protocol === 'https:' && to.protocol !== 'https:');
+  } catch {
+    return false;
+  }
+}
+
 export function setDirectAgentMaxSockets(maxSockets: number): void {
   if (directHttpAgent) {
     directHttpAgent.maxSockets = maxSockets;
@@ -284,9 +310,10 @@ export class HttpClient {
         }
         redirects++;
         referer = currentUrl.toString();
-        if (nextUrl.hostname.toLowerCase() !== originalHost) {
+        const downgraded = currentUrl.protocol === 'https:' && nextUrl.protocol !== 'https:';
+        if (nextUrl.hostname.toLowerCase() !== originalHost || downgraded) {
           for (const name of Object.keys(customHeaders)) {
-            if (/authorization|cookie|proxy-authorization|x-api-key|api-key/i.test(name)) delete customHeaders[name];
+            if (SENSITIVE_HEADER_PATTERN.test(name)) delete customHeaders[name];
           }
           originalHost = nextUrl.hostname.toLowerCase();
         }
@@ -333,16 +360,20 @@ export class HttpClient {
           : this.getDirectHttpAgent();
 
       const finalHeaders: Record<string, string> = {};
-      for (const [key, value] of Object.entries(headers)) {
-        if (key.toLowerCase() === 'cookie' && cookieJar) continue;
-        finalHeaders[key] = value;
-      }
+      for (const [key, value] of Object.entries(headers)) finalHeaders[key] = value;
       if (!hasHeader(finalHeaders, 'user-agent')) finalHeaders['User-Agent'] = this.defaultUserAgent;
       if (!hasHeader(finalHeaders, 'accept')) finalHeaders.Accept = '*/*';
       if (!hasHeader(finalHeaders, 'accept-encoding')) finalHeaders['Accept-Encoding'] = 'identity';
       if (referer && !hasHeader(finalHeaders, 'referer')) finalHeaders.Referer = referer;
       const jarHeader = cookieJar?.headerFor(url.toString());
-      if (jarHeader) finalHeaders.Cookie = jarHeader;
+      if (jarHeader) {
+        // Cookies learned from the server win over the captured header, but the
+        // captured cookies still apply when the jar has nothing for this URL.
+        for (const key of Object.keys(finalHeaders)) {
+          if (key.toLowerCase() === 'cookie') delete finalHeaders[key];
+        }
+        finalHeaders.Cookie = jarHeader;
+      }
 
       const requestOptions: https.RequestOptions = {
         method,

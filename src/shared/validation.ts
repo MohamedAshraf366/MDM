@@ -68,7 +68,12 @@ function stripControlCharacters(value: string): string {
 }
 
 export function sanitizeFileName(input: string, fallback = 'download'): string {
-  let name = stripControlCharacters(input || '').replace(INVALID_FILENAME_CHARS, '_').trim();
+  // Bidi overrides and zero-width characters let "invoice<RLO>txt.exe" display
+  // as "invoiceexe.txt"; a server-supplied name must not hide its real extension.
+  let name = stripControlCharacters(input || '')
+    .replace(/[\u061C\u200B-\u200F\u202A-\u202E\u2060-\u2064\u2066-\u2069\uFEFF]/g, '')
+    .replace(INVALID_FILENAME_CHARS, '_')
+    .trim();
   name = name.replace(/\s+/g, ' ');
   name = name.replace(/^[. ]+|[. ]+$/g, '');
   if (!name || name === '.' || name === '..') name = fallback;

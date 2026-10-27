@@ -193,7 +193,7 @@ export class DownloadManager extends EventEmitter {
   }
 
   getRecords(): DownloadRecord[] {
-    return Array.from(this.downloads.values()).sort((a, b) => (b.createdAt > a.createdAt ? 1 : -1));
+    return Array.from(this.downloads.values()).sort((a, b) => (b.createdAt > a.createdAt ? 1 : b.createdAt < a.createdAt ? -1 : 0));
   }
 
   getActiveRecords(): DownloadRecord[] {

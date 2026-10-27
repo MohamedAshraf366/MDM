@@ -183,7 +183,22 @@ export class BrowserBridge {
     return address && typeof address === 'object' ? (address as AddressInfo).port : this.settings.port;
   }
 
+  /**
+   * Only answer requests addressed to the loopback name the extension uses.
+   * A DNS-rebinding page reaches this port under its own hostname, so rejecting
+   * any other Host closes that route regardless of the token.
+   */
+  private hostAllowed(request: http.IncomingMessage): boolean {
+    const host = String(request.headers.host ?? '').toLowerCase();
+    const port = this.listeningPort();
+    return host === `127.0.0.1:${port}` || host === `localhost:${port}` || host === `[::1]:${port}`;
+  }
+
   private async handle(request: http.IncomingMessage, response: http.ServerResponse): Promise<void> {
+    if (!this.hostAllowed(request)) {
+      this.json(response, 403, { ok: false, error: 'Unexpected Host header.' });
+      return;
+    }
     const origin = typeof request.headers.origin === 'string' ? request.headers.origin : '';
     response.setHeader('Access-Control-Allow-Origin', origin || '*');
     response.setHeader('Vary', 'Origin');

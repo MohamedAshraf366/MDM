@@ -22,6 +22,7 @@ import { SafeStorageSecretBox } from './secure';
 import { SettingsService } from './settings';
 import { AppLogger } from './logger';
 import { DownloadManager, type ManagerHost } from './manager';
+import { systemExecutable } from '../engine/win-tools';
 import { SchedulerService } from './scheduler';
 import { BrowserBridge } from './bridge';
 import { registerIpc, performSystemShutdown } from './ipc';
@@ -689,7 +690,7 @@ function resolveYtDlpPath(): string {
 function resolveToolPath(name: string, versionArgs: string[]): string {
   try {
     if (process.platform === 'win32') {
-      const result = spawnSync('where.exe', [name], { timeout: 4000, windowsHide: true, encoding: 'utf8' });
+      const result = spawnSync(systemExecutable('where.exe'), [name], { timeout: 4000, windowsHide: true, encoding: 'utf8' });
       const first = String(result.stdout ?? '').split(/\r?\n/).map((line) => line.trim()).find(Boolean);
       if (result.status === 0 && first) return first;
     }

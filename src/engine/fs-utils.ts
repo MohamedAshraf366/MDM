@@ -5,6 +5,7 @@ import { spawn } from 'node:child_process';
 import { DownloadError } from './errors';
 import { sanitizeFileName } from '../shared/validation';
 import { MIN_CONNECTION_FILE_SIZE } from '../shared/defaults';
+import { systemExecutable } from './win-tools';
 
 function enableSparseFlag(filePath: string): Promise<void> {
   return new Promise((resolve) => {
@@ -17,7 +18,7 @@ function enableSparseFlag(filePath: string): Promise<void> {
       clearTimeout(timer);
       resolve();
     };
-    const proc = spawn('fsutil', ['sparse', 'setflag', filePath], {
+    const proc = spawn(systemExecutable('fsutil.exe'), ['sparse', 'setflag', filePath], {
       windowsHide: true,
       stdio: 'ignore'
     });

@@ -30,6 +30,8 @@ import {
   httpStatusError,
   parseContentRange,
   CookieJar as CookieJarClass,
+  sharesCredentialScope,
+  stripSensitiveHeaders,
   type CookieJar,
   type HttpResponse
 } from './http-client';
@@ -585,7 +587,13 @@ export class HttpDownloadTask {
       segment.status = 'complete';
       return;
     }
-    const headers: Record<string, string> = { ...this.config.headers };
+    // The probe already dropped credentials when it was redirected to another
+    // host; segment requests go straight to the final URL, so apply the same
+    // rule here or the original Authorization and Cookie would follow the redirect.
+    const sameScope = sharesCredentialScope(this.config.url, this.prepared.finalUrl);
+    const headers: Record<string, string> = sameScope
+      ? { ...this.config.headers }
+      : stripSensitiveHeaders(this.config.headers);
     const wholeFileRequest = !this.prepared.resumable && start === 0 && segment.downloadedBytes === 0;
     if (!wholeFileRequest) {
       headers.Range = `bytes=${start}-${end === null ? '' : end}`;
@@ -593,7 +601,7 @@ export class HttpDownloadTask {
         headers['If-Range'] = this.prepared.etag || this.prepared.lastModified;
       }
     }
-    if (this.config.cookies) headers.Cookie = this.config.cookies;
+    if (this.config.cookies && sameScope) headers.Cookie = this.config.cookies;
     if (this.config.referrer) headers.Referer = this.config.referrer;
 
     const absolutePosition = start;
@@ -761,12 +769,31 @@ export class HttpDownloadTask {
         throw new DownloadError('The connection closed before the byte range was complete.', 'NETWORK', { retryable: true });
       }
       segment.status = 'complete';
+    } catch (error) {
+      // The transfer broke (reset, timeout, pause) with bytes already counted
+      // but still buffered. Keep them if they can be written; otherwise the
+      // finally block rewinds the counters so a retry refetches them.
+      if (!this.canceled && pendingBytes > 0) {
+        try {
+          await flushPending(true);
+        } catch {
+          // Rolled back by settleInflight; the original error is what matters.
+        }
+      }
+      throw error;
     } finally {
       // Never leave a segment write running past the request that owns it.
       try {
         await settleInflight();
       } catch {
         // A write error already surfaced (or the transfer is being aborted).
+      }
+      // Anything still buffered was counted when it arrived but never reached
+      // disk. Rewind it, or a retry would resume past a hole of zeros.
+      if (pendingBytes > 0) {
+        rollback(pendingBytes);
+        pending = [];
+        pendingBytes = 0;
       }
       response?.close();
       releaseHost?.();

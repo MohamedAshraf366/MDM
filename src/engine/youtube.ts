@@ -1,6 +1,7 @@
 import { spawn, type ChildProcess } from 'node:child_process';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
+import { systemExecutable } from './win-tools';
 import type { ChecksumStatus, DownloadSegment, MediaFormat, MediaProbeResult } from '../shared/types';
 import { CHECKPOINT_INTERVAL_MS } from '../shared/defaults';
 import { sanitizeFileName } from '../shared/validation';
@@ -1130,7 +1131,7 @@ function terminateProcess(child: ChildProcess): void {
   if (!child.pid || child.exitCode !== null) return;
   if (process.platform === 'win32') {
     try {
-      const killer = spawn('taskkill.exe', ['/pid', String(child.pid), '/T', '/F'], {
+      const killer = spawn(systemExecutable('taskkill.exe'), ['/pid', String(child.pid), '/T', '/F'], {
         windowsHide: true,
         stdio: 'ignore'
       });

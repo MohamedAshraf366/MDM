@@ -131,7 +131,10 @@ export const MAX_REDIRECTS = 10;
 export const MIN_CONNECTION_FILE_SIZE = 2 * 1024 * 1024;
 export const SEGMENT_WRITE_HIGH_WATER = 1024 * 1024;
 export const SEGMENT_SPLIT_THRESHOLD = 4 * 1024 * 1024;
-/** Covers one buffered batch plus the write that may still be in flight. */
-export const RESUME_SAFETY_MARGIN_BYTES = 2 * SEGMENT_WRITE_HIGH_WATER;
+/**
+ * Covers one buffered batch plus the write that may still be in flight. Each
+ * can overshoot the high-water mark by one network chunk, hence the headroom.
+ */
+export const RESUME_SAFETY_MARGIN_BYTES = 2 * SEGMENT_WRITE_HIGH_WATER + 256 * 1024;
 export const PROGRESS_INTERVAL_MS = 400;
 export const CHECKPOINT_INTERVAL_MS = 3_000;
