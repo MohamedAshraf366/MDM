@@ -20,11 +20,17 @@ A fast, local-first download manager for Windows 10 and 11 — segmented transfe
 
 > **Independence notice:** MDM is an original, clean-room project. It is not affiliated with, derived from, or endorsed by Internet Download Manager (IDM) or any commercial download manager.
 
+<p align="center">
+  <img src="assets/screenshot.png" width="920" alt="MDM desktop app showing active downloads, speed charts, and segmented transfer progress" />
+</p>
+
 ## Download
 
 The latest stable Windows build is available from the official website:
 
 ### [Download MDM 2.4 for Windows →](https://mdm-download-manager-mohamed-ashraf.vercel.app/)
+
+Source code: [github.com/MohamedAshraf366/MDM-DowloadManager](https://github.com/MohamedAshraf366/MDM-DowloadManager)
 
 | | |
 |---|---|
@@ -33,6 +39,8 @@ The latest stable Windows build is available from the official website:
 | **Installer** | `MDM-Setup-2.4.exe` (215 MB) |
 | **SHA-256** | `196A18B7EBDBA437AA16FB97238A45DC4475AFC71D29ECFD384ECB587D2811DE` |
 | **Browser add-ons** | Chrome / Edge and Firefox packages are available on the download page. |
+
+The SHA-256 above is the hash published on the download page for the 2.4 installer. Rebuilding locally produces a new binary, so compare the downloaded file against the hash shown on the official page.
 
 Verify the installer before running it:
 
@@ -47,6 +55,8 @@ The installer is an NSIS package. It creates Start Menu and desktop shortcuts, a
 MDM is a Windows desktop download manager built with Electron, React, and TypeScript. It runs entirely on your machine: downloads, queues, rules, settings, and history are stored locally in SQLite. There is no account, cloud sync, or telemetry.
 
 The transfer engine opens up to eight connections per download, resumes interrupted transfers from checkpoints, and adapts when a server rejects range requests. A browser extension hands links from Chrome, Edge, or Firefox to the desktop app over a token-protected loopback bridge. The same app can also download direct HLS VOD and basic static DASH manifests, and uses the bundled `yt-dlp` + FFmpeg tools for supported media pages.
+
+**Tech stack:** Electron 44 · React 19 · TypeScript 5.9 · Vite 8 · SQLite via `node:sqlite` · Vitest · Playwright.
 
 ## Features
 
@@ -121,10 +131,10 @@ The packaged app bundles `yt-dlp.exe`, `ffmpeg.exe`, and `ffprobe.exe` under `re
 
 ```powershell
 git lfs install
-git clone <repository-url>
-cd idm
+git clone https://github.com/MohamedAshraf366/MDM-DowloadManager.git
+cd MDM-DowloadManager
 git lfs pull
-npm install
+npm ci
 npm run dev
 ```
 
@@ -148,7 +158,7 @@ npm run dev
 ## Build a Windows installer
 
 ```powershell
-npm install
+npm ci
 npm run verify
 npm run package
 ```
@@ -257,41 +267,54 @@ npm run smoke:extension
 npm run smoke:packaged   # after npm run package
 ```
 
-`npm run verify` currently passes typecheck, lint, **102 tests**, and the production build. The Vitest suite covers validation, schedule timing, checksums, rate limiting, sparse writes, segmented HTTP downloads, pause/resume, HLS parsing, YouTube format selection, media-probe caching, database persistence, site-rule resolution, bridge pairing/authentication/rule handling, concurrent capture coalescing, download lifecycle transitions, and actionable notifications. The Electron smoke test starts the app with an isolated data directory, checks every page and the bridge, downloads a fixture through the real IPC/engine stack, and verifies the checksum. The extension smoke test loads the unpacked Manifest V3 extension in Chromium and exercises pairing and the YouTube, generic video, cross-origin iframe, and yt-dlp overlay flows against a mocked bridge.
+`npm run verify` currently passes typecheck, lint, **119 tests across 22 test files**, and the production build. The Vitest suite covers validation, schedule timing, checksums, rate limiting, sparse writes, segmented HTTP downloads, pause/resume, HLS parsing, YouTube format selection, media-probe caching, database persistence, site-rule resolution, bridge pairing/authentication/rule handling, concurrent capture coalescing, download lifecycle transitions, and actionable notifications. The Electron smoke test starts the app with an isolated data directory, checks every page and the bridge, downloads a fixture through the real IPC/engine stack, and verifies the checksum. The extension smoke test loads the unpacked Manifest V3 extension in Chromium and exercises pairing and the YouTube, generic video, cross-origin iframe, and yt-dlp overlay flows against a mocked bridge.
 
-## Publishing to GitHub
+## GitHub and releases
 
-The desktop application is ready to publish as a GitHub repository. GitHub hosts the source and Release assets; the Windows app itself is distributed from the [Vercel download page](https://mdm-download-manager-mohamed-ashraf.vercel.app/). Checked on this checkout: typecheck, lint, 102 tests, production build, Electron smoke test, and packaged-app smoke test all pass.
+The source is published at **[MohamedAshraf366/MDM-DowloadManager](https://github.com/MohamedAshraf366/MDM-DowloadManager)**. GitHub hosts the source and Release assets; the Windows app itself is distributed from the [Vercel download page](https://mdm-download-manager-mohamed-ashraf.vercel.app/). On this checkout, typecheck, lint, **119 tests**, the production build, the Electron smoke test, and the packaged-app smoke test pass.
 
-Two repository-specific details matter:
+### What is committed
 
-1. **Use Git LFS.** `tools/ffmpeg.exe` and `tools/ffprobe.exe` are about 161 MB each, above GitHub's 100 MB per-file limit. `.gitattributes` already tracks `tools/*.exe` with LFS. Install and enable it before the first commit:
+- Application, extension, test, and build-source files.
+- `assets/` and extension icons.
+- `tools/ffmpeg.exe`, `tools/ffprobe.exe`, and `tools/yt-dlp.exe` as Git LFS pointers.
 
-   ```powershell
-   git lfs install
-   git init
-   git add .
-   git commit -m "Initial commit"
-   git branch -M main
-   git remote add origin https://github.com/<your-user>/<your-repo>.git
-   git push -u origin main
-   ```
+The bundled tools total about 339 MB, so keep an eye on your Git LFS storage and bandwidth quota. On a fresh clone, run `git lfs pull` if the files under `tools/` are small pointer files.
 
-   On a fresh clone, run `git lfs pull` if the tool files are small pointer files. The three bundled tools total about 339 MB, so keep an eye on your Git LFS storage and bandwidth quota.
+### What is not committed
 
-2. **Publish installers as Releases.** `release/`, `dist/`, and `node_modules/` are ignored. Build with `npm run package` and attach `release/MDM-Setup-2.4.exe` to a GitHub Release. The repository does not currently include a Windows packaging workflow.
+- `release/`, `dist/`, `node_modules/`, coverage, and test reports are ignored.
+- `release/MDM-Setup-2.4.exe` (~215 MB) is attached to a GitHub Release, never committed.
+- The optional `website/` marketing-site source is not included. The live site is built and hosted separately, so a fresh Vercel or GitHub Pages deployment from this checkout will not rebuild it until that folder is restored.
 
-The live download page is hosted on Vercel: [mdm-download-manager-mohamed-ashraf.vercel.app](https://mdm-download-manager-mohamed-ashraf.vercel.app/). This repository contains the desktop app source. The optional `website/` marketing-site source referenced by the root `vercel.json` and `.github/workflows/deploy-pages.yml` is not included in this checkout; the desktop build does not depend on it.
+### Pushing updates
+
+```powershell
+git lfs install
+git add .
+git commit -m "Describe your change"
+git push
+```
+
+### Publishing an installer
+
+```powershell
+npm ci
+npm run verify
+npm run package
+```
+
+Attach `release/MDM-Setup-2.4.exe` to a GitHub Release. Do not commit it. GitHub Actions does not build the Windows installer because packaging needs Windows and the bundled tools.
 
 ### Suggested repository metadata
 
-Use this in the **About** panel when creating the GitHub repository:
+Use these values in the GitHub **About** panel:
 
 | Field | Value |
 |---|---|
-| **Description** | A fast, local-first download manager for Windows 10/11 with 8-connection segmented transfers, Chrome/Edge/Firefox capture, queues, schedules, site rules, checksums, and HLS/DASH/YouTube downloads. |
+| **Description** | A fast, local-first download manager for Windows 10/11 — 8-connection segmented transfers, resume, browser capture, queues, schedules, site rules, checksums, HLS/DASH, and YouTube downloads. Built with Electron, React, and TypeScript. |
 | **Homepage** | [mdm-download-manager-mohamed-ashraf.vercel.app](https://mdm-download-manager-mohamed-ashraf.vercel.app/) |
-| **Topics** | `download-manager` `electron` `react` `typescript` `windows` `hls` `dash` `yt-dlp` `browser-extension` `local-first` `idm-alternative` |
+| **Topics** | `download-manager` `electron` `react` `typescript` `windows` `hls` `dash` `yt-dlp` `browser-extension` `local-first` `idm-alternative` `ftp` `sqlite` |
 | **License** | MIT |
 
 The README is the public project description: it covers what MDM is, its features, requirements, how to run it from source, how to build the Windows installer, extension installation, and where users can download the live version.
@@ -299,7 +322,7 @@ The README is the public project description: it covers what MDM is, its feature
 ### Pre-push checklist
 
 - [ ] Run `git lfs install` once per machine and confirm `git lfs track` lists `tools/*.exe`. LFS is required because `ffmpeg.exe` and `ffprobe.exe` exceed GitHub's 100 MB per-file limit.
-- [ ] Run `npm run verify` (typecheck, lint, tests, and production build). It passes on this checkout: **102 tests**.
+- [ ] Run `npm run verify` (typecheck, lint, tests, and production build). It passes on this checkout: **119 tests**.
 - [ ] Confirm `release/`, `dist/`, and `node_modules/` are not staged.
 - [ ] Attach `release/MDM-Setup-2.4.exe` (215 MB, SHA-256 `196A18B7…D2811DE`) to a GitHub Release instead of committing it.
 - [ ] Keep the Vercel download page linked. This checkout does not contain the `website/` source needed to rebuild it, so connect Vercel only after restoring that folder.
