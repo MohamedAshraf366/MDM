@@ -15,11 +15,14 @@
     "typecheck": "tsc -p tsconfig.main.json --noEmit && tsc -p tsconfig.renderer.json --noEmit",
     "lint": "eslint .",
     "test": "vitest run",
+    "bench:http": "cross-env MDM_BENCH=1 vitest run tests/http-benchmark.test.ts",
     "verify": "npm run typecheck && npm run lint && npm test && npm run build",
     "smoke": "npm run build && node scripts/smoke.mjs",
     "smoke:packaged": "node scripts/smoke.mjs --packaged",
     "smoke:extension": "node scripts/extension-smoke.mjs",
-    "package": "npm run build && electron-builder --win nsis",
+    "smoke:fuses": "node scripts/verify-fuses.mjs",
+    "package": "npm run build && electron-builder --win nsis && npm run smoke:fuses",
+    "package:signed": "node scripts/require-signing-env.mjs && npm run build && electron-builder --win nsis --config electron-builder.signed.yml && npm run smoke:fuses",
     "package:portable": "npm run build && electron-builder --win portable",
     "package:extension": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/package-extension.ps1",
     "icons": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/generate-icons.ps1",
@@ -33,6 +36,7 @@
     "react-dom": "^19.3.1"
   },
   "devDependencies": {
+    "@electron/fuses": "^1.8.0",
     "@eslint/js": "^9.39.5",
     "@playwright/test": "^1.64.1",
     "@types/node": "^24.9.0",

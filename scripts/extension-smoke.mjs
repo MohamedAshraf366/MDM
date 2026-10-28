@@ -1,5 +1,6 @@
 /* global chrome */
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import fsp from 'node:fs/promises';
 import http from 'node:http';
 import os from 'node:os';
@@ -7,7 +8,16 @@ import path from 'node:path';
 import { chromium } from 'playwright';
 
 const extensionPath = path.resolve('extension');
-await fsp.access(path.join(extensionPath, 'manifest.json'));
+const manifest = JSON.parse(await fsp.readFile(path.join(extensionPath, 'manifest.json'), 'utf8'));
+assert.equal(typeof manifest.key, 'string', 'the Chrome manifest must pin the extension ID with a key');
+
+function extensionIdFromKey(key) {
+  const hex = createHash('sha256').update(Buffer.from(key, 'base64')).digest('hex').slice(0, 32);
+  return [...hex].map((digit) => String.fromCharCode(97 + Number.parseInt(digit, 16))).join('');
+}
+
+const pinnedExtensionId = extensionIdFromKey(manifest.key);
+assert.match(pinnedExtensionId, /^[a-p]{32}$/);
 const userData = await fsp.mkdtemp(path.join(os.tmpdir(), 'mdm-extension-'));
 let context = null;
 let bridge = null;
@@ -48,7 +58,7 @@ async function startBridge() {
       response.writeHead(status, {
         'Content-Type': 'application/json',
         'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Headers': 'Authorization, Content-Type',
+        'Access-Control-Allow-Headers': 'Authorization, Content-Type, X-MDM-Extension',
         'Access-Control-Allow-Methods': 'GET, POST, OPTIONS'
       });
       response.end(JSON.stringify(payload));
@@ -58,11 +68,16 @@ async function startBridge() {
       return;
     }
     if (request.url === '/pair') {
-      const origin = request.headers.origin ?? '';
-      const extensionPairing =
-        /^(?:chrome-extension|moz-extension):\/\//.test(origin) ||
-        (!origin && request.headers['sec-fetch-site'] === 'none' && request.headers['sec-fetch-mode'] === 'cors');
-      if (!extensionPairing) {
+      const origin = String(request.headers.origin ?? '').toLowerCase();
+      const workerId = String(request.headers['x-mdm-extension'] ?? '').toLowerCase();
+      const pinnedOrigin = origin === `chrome-extension://${pinnedExtensionId}`;
+      const pinnedWorker =
+        !origin &&
+        workerId === pinnedExtensionId &&
+        request.headers['sec-fetch-site'] === 'none' &&
+        request.headers['sec-fetch-mode'] === 'cors' &&
+        request.headers['sec-fetch-dest'] === 'empty';
+      if (!pinnedOrigin && !pinnedWorker) {
         send(403, { ok: false, error: 'Extension origin required.' });
         return;
       }
@@ -196,6 +211,7 @@ try {
   if (!worker) worker = await context.waitForEvent('serviceworker', { timeout: 20_000 });
   const extensionId = new URL(worker.url()).host;
   assert.match(extensionId, /^[a-p]{32}$/);
+  assert.equal(extensionId, pinnedExtensionId, 'the loaded extension must keep the pinned ID');
 
   const config = await worker.evaluate(async () => globalThis.MDMExt.getConfig());
   assert.equal(config.port, 41731);

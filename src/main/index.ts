@@ -6,6 +6,7 @@ import {
   nativeImage,
   nativeTheme,
   Notification,
+  protocol,
   session,
   shell,
   Tray,
@@ -27,8 +28,32 @@ import { SchedulerService } from './scheduler';
 import { BrowserBridge } from './bridge';
 import { registerIpc, performSystemShutdown } from './ipc';
 import { migrateLegacyProfile } from './migration';
+import {
+  APP_ORIGIN,
+  APP_RENDERER_URL,
+  APP_SCHEME,
+  RENDERER_CSP,
+  createRendererProtocolHandler
+} from './renderer-protocol';
 
 const APP_ID = 'com.mdm.desktop';
+const RENDERER_ROOT = path.join(__dirname, '../../renderer');
+
+// Register before app readiness so the renderer can be served from a secure,
+// standard scheme instead of file://. This lets the packaged app disable the
+// GrantFileProtocolExtraPrivileges fuse without breaking ASAR asset loading.
+protocol.registerSchemesAsPrivileged([
+  {
+    scheme: APP_SCHEME,
+    privileges: {
+      standard: true,
+      secure: true,
+      supportFetchAPI: true,
+      corsEnabled: true,
+      codeCache: true
+    }
+  }
+]);
 const PROGRESS_EVENT = 'mdm:progress';
 const SNAPSHOT_EVENT = 'mdm:snapshot';
 const UPDATED_EVENT = 'mdm:download-updated';
@@ -117,6 +142,7 @@ if (!gotLock) {
 }
 
 async function bootstrap(): Promise<void> {
+  registerAppProtocol();
   configureSession();
   const dbPath = path.join(app.getPath('userData'), 'mdm.db');
   const database = new AppDatabase(dbPath, new SafeStorageSecretBox());
@@ -274,6 +300,10 @@ function wireLogs(appLogger: AppLogger): void {
   appLogger.onLog((log) => send(LOG_EVENT, log));
 }
 
+function registerAppProtocol(): void {
+  protocol.handle(APP_SCHEME, createRendererProtocolHandler(RENDERER_ROOT));
+}
+
 function configureSession(): void {
   const currentSession = session.defaultSession;
   currentSession.setPermissionRequestHandler((_webContents, _permission, callback) => callback(false));
@@ -281,14 +311,14 @@ function configureSession(): void {
   currentSession.webRequest.onHeadersReceived((details, callback) => {
     const isAppUrl = devServerUrl
       ? details.url.startsWith(devServerUrl)
-      : details.url.startsWith('file://');
+      : details.url.startsWith(APP_ORIGIN);
     if (!isAppUrl) {
       callback({ responseHeaders: details.responseHeaders });
       return;
     }
     const csp = devServerUrl
       ? "default-src 'self' http://localhost:5173; script-src 'self' 'unsafe-inline' http://localhost:5173; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' ws://localhost:5173 http://localhost:5173; object-src 'none'; base-uri 'none'; frame-ancestors 'none'"
-      : "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'";
+      : RENDERER_CSP;
     const headers: Record<string, string[]> = {};
     for (const [name, value] of Object.entries(details.responseHeaders ?? {})) {
       if (name.toLowerCase() === 'content-security-policy') continue;
@@ -339,6 +369,7 @@ function createMainWindow(): void {
   });
   window.webContents.on('will-navigate', (event, url) => {
     if (devServerUrl && url.startsWith(devServerUrl)) return;
+    if (url.startsWith(`${APP_ORIGIN}/`)) return;
     if (url.startsWith('file://') && !app.isPackaged) return;
     event.preventDefault();
     const safe = safeExternalUrl(url);
@@ -386,7 +417,7 @@ function createMainWindow(): void {
     void window.loadURL(devServerUrl).catch((error) => logger?.error('system', `Could not load the UI: ${error.message}`));
   } else {
     void window
-      .loadFile(path.join(__dirname, '../../renderer/index.html'))
+      .loadURL(APP_RENDERER_URL)
       .catch((error) => logger?.error('system', `Could not load the UI: ${error.message}`));
   }
 }

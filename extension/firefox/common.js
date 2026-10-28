@@ -4,6 +4,11 @@
   const api = globalThis.browser ?? globalThis.chrome;
   if (!api) return;
 
+  // Firefox gives every profile a random moz-extension:// UUID, so the desktop
+  // app cannot verify which add-on is asking. Chrome and Edge report a stable
+  // chrome-extension://<id> origin, which MDM pins to this extension.
+  const autoPairSupported = !/^moz-extension:/i.test(api.runtime.getURL(''));
+
   const PAGE_MEDIA_PATTERN = /\.(m3u8|m3u|mpd|mp4|m4v|mkv|webm|mov|flv|avi|ts|mp3|m4a|aac|flac|wav|ogg|opus)(?:$|[?#])/i;
 
   const DEFAULT_CONFIG = {
@@ -45,6 +50,11 @@
   }
 
   async function connect(port) {
+    if (!autoPairSupported) {
+      throw new Error(
+        'Firefox cannot verify this add-on automatically. Copy the bridge token from MDM (Browser) and paste it into the token field.'
+      );
+    }
     const current = await getConfig();
     const target = clampPort(port ?? current.port);
     const controller = new AbortController();
@@ -54,6 +64,7 @@
       response = await fetch(`http://127.0.0.1:${target}/pair`, {
         method: 'GET',
         cache: 'no-store',
+        headers: { 'X-MDM-Extension': api.runtime.id },
         signal: controller.signal
       });
     } catch (error) {
@@ -538,6 +549,7 @@
   globalThis.MDMExt = {
     api,
     defaults: DEFAULT_CONFIG,
+    canAutoPair: autoPairSupported,
     getConfig,
     saveConfig,
     connect,

@@ -85,7 +85,7 @@ The transfer engine opens up to eight connections per download, resumes interrup
 - Chrome/Edge Manifest V3 and Firefox Manifest V3 extensions.
 - Context-menu download handoff.
 - Optional automatic capture of browser downloads; the browser copy is cancelled only after MDM accepts the transfer.
-- Automatic pairing over `http://127.0.0.1:41731` with a generated bearer token.
+- Automatic pairing over `http://127.0.0.1:41731` with a generated bearer token, pinned to the Chrome/Edge extension ID; Firefox uses a manual token.
 - Restores and focuses the app, opens Downloads, and scrolls to the new transfer.
 - Toast notifications for started, completed, and failed downloads with retry, details, and open actions.
 - Quality overlays for YouTube, generic HTML5 video, and players inside cross-origin iframes.
@@ -97,6 +97,7 @@ The transfer engine opens up to eight connections per download, resumes interrup
 - YouTube and other `yt-dlp`-supported pages with video quality selection.
 - Audio-only M4A, MP3, WebM/Opus, and other native `yt-dlp` audio formats.
 - FFmpeg muxing for video + audio.
+- Page cookies scoped to the page's own site and the Windows certificate store trusted by both the HTTP and yt-dlp engines.
 - Unencrypted HLS VOD: master/media playlists, byte-range segments, relative URLs, and fMP4 initialization sections.
 - Basic static DASH manifests with representation selection.
 - Encrypted HLS, DRM-protected content, live streams, paywalled, and members-only content are intentionally unsupported. MDM does not bypass DRM or access controls.
@@ -149,7 +150,10 @@ npm run dev
 | `npm test` | Run the Vitest suite |
 | `npm run smoke` | Build and run an end-to-end Electron smoke test |
 | `npm run smoke:extension` | Load the extension in Chromium and test pairing/overlays |
+| `npm run smoke:fuses` | Verify the packaged executable's Electron fuses |
+| `npm run bench:http` | Run the opt-in local HTTP throughput benchmark |
 | `npm run package` | Build the Windows x64 NSIS installer in `release/` |
+| `npm run package:signed` | Build and code-sign the Windows installer (requires a certificate) |
 | `npm run package:portable` | Build a portable Windows executable |
 | `npm run smoke:packaged` | Smoke-test the packaged app |
 | `npm run build:extension` | Rebuild/sync the Chrome, Edge, and Firefox extension files |
@@ -165,6 +169,26 @@ npm run package
 
 The installer is written to `release/MDM-Setup-2.4.exe`. Builds are not produced by CI because packaging requires Windows and the bundled tools. Attach the installer to a GitHub Release instead of committing it.
 
+### Code signing
+
+`npm run package` builds an unsigned installer so local builds work without a certificate. For a release build, provide a code-signing certificate and use the signing profile:
+
+```powershell
+$env:CSC_LINK = 'C:\path\to\certificate.pfx'   # or WIN_CSC_LINK
+$env:CSC_KEY_PASSWORD = 'certificate-password'  # or WIN_CSC_KEY_PASSWORD
+npm run package:signed
+```
+
+`package:signed` refuses to start without `CSC_LINK` or `WIN_CSC_LINK`. It enables electron-builder's `forceCodeSigning`, signs with SHA-256, and uses the DigiCert RFC 3161 timestamp service so signatures remain valid after the certificate expires. Confirm the result before publishing:
+
+```powershell
+Get-AuthenticodeSignature .\release\MDM-Setup-2.4.exe | Format-List Status, SignerCertificate
+```
+
+Unsigned builds trigger Windows SmartScreen and should only be used for local testing.
+
+The packaged runtime is hardened with Electron fuses: `NODE_OPTIONS` and CLI inspection are disabled, ASAR integrity validation and ASAR-only app loading are enforced, cookies are encrypted, and the `file://` privilege-escalation fuse is disabled (the renderer is served over `mdm://app`). `runAsNode` deliberately stays enabled because the bundled yt-dlp is launched through the Electron binary as Node. `npm run smoke:fuses` checks every fuse on the packaged executable.
+
 ## Browser extension
 
 The desktop installer bundles the extension and opens the selected browser's extension page. For development:
@@ -178,16 +202,18 @@ npm run build:extension
 1. Open `chrome://extensions` or `edge://extensions`.
 2. Enable **Developer mode**.
 3. Choose **Load unpacked** and select the `extension` folder.
-4. Leave **Browser integration** enabled in MDM; pairing happens automatically.
+4. Leave **Browser integration** enabled in MDM. The extension pairs automatically and fills in the token.
 
 **Firefox**
 
 1. Open `about:debugging#/runtime/this-firefox`.
 2. Choose **Load Temporary Add-on**.
 3. Select `extension/firefox/manifest.json`.
-4. Confirm the bridge URL (`http://127.0.0.1:41731` by default) and let the add-on pair.
+4. Copy the bridge token from MDM's **Browser** page into the add-on settings and test the connection.
 
 Browsers require one manual confirmation for unpacked extensions. MDM's installer copies the unpacked extension path to the clipboard to make this faster. Starting MDM from a browser while the desktop app is completely closed is not supported; start MDM first.
+
+The Chrome/Edge extension ID is pinned to `oojnafhedmcdiohlppogncampchpenjf` by the public `key` in `extension/manifest.json`. MDM only hands its bridge token to that ID, so another installed extension cannot pair itself. Firefox assigns every profile a random `moz-extension://` UUID that the desktop app cannot verify, which is why Firefox uses the manual token flow.
 
 ## Site rules
 
@@ -214,6 +240,8 @@ The most specific matching pattern wins. A rule can also set a destination direc
 
 DASH audio/video tracks can be downloaded separately, but MDM does not automatically mux them.
 
+For yt-dlp pages, browser cookies are written to a temporary Netscape cookie file scoped to the page's registrable domain instead of being sent as a global header to every host yt-dlp contacts. Third-party media hosts therefore never receive the page session. yt-dlp also receives the same merged OS/Node CA bundle as the HTTP engine through `--ca-bundle`, so antivirus and corporate roots work without disabling certificate verification. The temporary cookie file is removed when the probe or download ends.
+
 ## Data location
 
 The SQLite database (`mdm.db`), logs, and settings are stored under:
@@ -228,8 +256,10 @@ On first launch, MDM imports an existing AeroFetch database from `%APPDATA%\Aero
 
 - **Disk-space error:** MDM refuses to start a transfer that cannot finish. Free enough space for the complete file plus the safety margin, choose another download folder, or retry after cleanup.
 - **yt-dlp missing tools:** confirm `tools/ffmpeg.exe`, `tools/ffprobe.exe`, and `tools/yt-dlp.exe` exist during development, or that the packaged app has them under `resources/tools`. Run `tools/ffmpeg.exe -version` in a new terminal to check the binary.
-- **Sign-in or bot check:** open the page in your browser while signed in, then retry the download so the extension can pass the page cookies. A site that `yt-dlp` does not support still needs a direct HLS/DASH or MP4/WebM source.
-- **Extension not pairing:** make sure MDM is running, **Browser integration** is enabled, port `41731` is free, and the extension has been reloaded.
+- **Sign-in or bot check:** open the page in your browser while signed in, then retry the download so the extension can pass the page cookies. Cookies are scoped to the page's own site, so a third-party media host may still require its own access. A site that `yt-dlp` does not support still needs a direct HLS/DASH or MP4/WebM source.
+- **Extension not pairing:** make sure MDM is running, **Browser integration** is enabled, port `41731` is free, and the extension has been reloaded. Chrome and Edge pair automatically; Firefox requires pasting the token shown on MDM's **Browser** page.
+- **Certificate or antivirus errors:** MDM trusts the Windows certificate store in addition to Node's bundled roots. If a proxy or scanner still intercepts TLS, import its root into Windows or set `MDM_DISABLE_SYSTEM_CA=1` to fall back to Node's default trust store. Certificate verification is never disabled globally.
+- **SmartScreen warning:** official builds are signed with `npm run package:signed`; a locally built unsigned installer will show SmartScreen until it is signed with a trusted certificate.
 - **Missing video overlay:** open the extension popup and choose **Show video overlays**, or refresh the page.
 
 ## Project layout
@@ -251,10 +281,13 @@ assets/        Application, tray, and installer icons
 
 ## Security notes
 
-- Renderer isolation is enabled; Node integration is disabled; the preload exposes a narrow typed API.
-- The bridge binds only to `127.0.0.1`, requires a bearer token, rejects oversized bodies, and applies rate limits. Automatic pairing is limited to browser-extension origins and extension service-worker requests.
+- Renderer isolation is enabled; Node integration is disabled; the preload exposes a narrow typed API. The packaged renderer is served from the privileged `mdm://app` scheme instead of `file://`, and the runtime enables ASAR integrity validation and disables `NODE_OPTIONS`, CLI inspection, and extra `file://` privileges through Electron fuses.
+- The bridge binds only to `127.0.0.1`, requires a bearer token, rejects oversized bodies, applies rate limits, and rejects Host headers other than loopback (`127.0.0.1`, `localhost`, or `[::1]`) to block DNS rebinding.
+- Automatic pairing is pinned to the Chrome/Edge extension ID `oojnafhedmcdiohlppogncampchpenjf`, which is derived from the public key in the extension manifest. Extension workers that omit `Origin` must also present the pinned ID and extension Fetch Metadata. Firefox has no verifiable stable origin, so it uses the manual token instead.
 - Proxy credentials and the bridge token use Electron `safeStorage` / DPAPI. Secret settings are encrypted at rest.
-- TLS certificate validation is enabled by default. The browser download confirmation dialog offers a per-download opt-in for hosts with a broken certificate chain; it is never enabled globally.
+- TLS certificate validation is enabled by default and trusts the Windows certificate store best-effort in addition to Node's bundled roots, so corporate and antivirus CAs work. Set `MDM_DISABLE_SYSTEM_CA=1` to opt out. The browser download confirmation dialog offers a per-download opt-in for hosts with a broken certificate chain; it is never enabled globally.
+- yt-dlp receives page cookies through a temporary, site-scoped cookie file rather than a global header, and uses the same merged CA bundle as the HTTP engine.
+- Downloads from HTTP, HTTPS, FTP, media, and yt-dlp sources are marked with the Windows Mark-of-the-Web (`Zone.Identifier`, zone 3) after they are placed, which keeps SmartScreen and Office Protected View active. Set `MDM_DISABLE_MOTW=1` to opt out.
 - Downloaded executables are never launched automatically.
 - MDM does not bypass DRM, paywalls, or access controls.
 
@@ -264,14 +297,16 @@ assets/        Application, tray, and installer icons
 npm run verify
 npm run smoke
 npm run smoke:extension
-npm run smoke:packaged   # after npm run package
+npm run package            # also runs smoke:fuses
+npm run smoke:packaged
+npm run bench:http         # opt-in throughput benchmark
 ```
 
-`npm run verify` currently passes typecheck, lint, **119 tests across 22 test files**, and the production build. The Vitest suite covers validation, schedule timing, checksums, rate limiting, sparse writes, segmented HTTP downloads, pause/resume, HLS parsing, YouTube format selection, media-probe caching, database persistence, site-rule resolution, bridge pairing/authentication/rule handling, concurrent capture coalescing, download lifecycle transitions, and actionable notifications. The Electron smoke test starts the app with an isolated data directory, checks every page and the bridge, downloads a fixture through the real IPC/engine stack, and verifies the checksum. The extension smoke test loads the unpacked Manifest V3 extension in Chromium and exercises pairing and the YouTube, generic video, cross-origin iframe, and yt-dlp overlay flows against a mocked bridge.
+`npm run verify` currently passes typecheck, lint, **130 tests across 26 test files**, and the production build. The opt-in HTTP benchmark is skipped by the normal test run. The Vitest suite covers validation, schedule timing, checksums, rate limiting, sparse writes, segmented HTTP downloads, pause/resume, HLS parsing, YouTube format selection, media-probe caching, database persistence, site-rule resolution, bridge pairing/authentication/rule handling, extension-ID derivation, yt-dlp cookie scoping/CA bundles, the renderer custom protocol, concurrent capture coalescing, download lifecycle transitions, and actionable notifications. The Electron smoke test starts the app with an isolated data directory, checks every page and the bridge, downloads a fixture through the real IPC/engine stack, and verifies the checksum. The extension smoke test loads the unpacked Manifest V3 extension in Chromium and exercises pinned pairing plus the YouTube, generic video, cross-origin iframe, and yt-dlp overlay flows against a mocked bridge. The packaged smoke test launches `release/win-unpacked`, and `npm run smoke:fuses` asserts that every hardened Electron fuse survived packaging.
 
 ## GitHub and releases
 
-The source is published at **[MohamedAshraf366/MDM-DowloadManager](https://github.com/MohamedAshraf366/MDM-DowloadManager)**. GitHub hosts the source and Release assets; the Windows app itself is distributed from the [Vercel download page](https://mdm-download-manager-mohamed-ashraf.vercel.app/). On this checkout, typecheck, lint, **119 tests**, the production build, the Electron smoke test, and the packaged-app smoke test pass.
+The source is published at **[MohamedAshraf366/MDM-DowloadManager](https://github.com/MohamedAshraf366/MDM-DowloadManager)**. GitHub hosts the source and Release assets; the Windows app itself is distributed from the [Vercel download page](https://mdm-download-manager-mohamed-ashraf.vercel.app/). On this checkout, typecheck, lint, **130 tests**, the production build, the Electron smoke test, and the packaged-app smoke test pass.
 
 ### What is committed
 
@@ -322,7 +357,7 @@ The README is the public project description: it covers what MDM is, its feature
 ### Pre-push checklist
 
 - [ ] Run `git lfs install` once per machine and confirm `git lfs track` lists `tools/*.exe`. LFS is required because `ffmpeg.exe` and `ffprobe.exe` exceed GitHub's 100 MB per-file limit.
-- [ ] Run `npm run verify` (typecheck, lint, tests, and production build). It passes on this checkout: **119 tests**.
+- [ ] Run `npm run verify` (typecheck, lint, tests, and production build). It passes on this checkout: **130 tests**.
 - [ ] Confirm `release/`, `dist/`, and `node_modules/` are not staged.
 - [ ] Attach `release/MDM-Setup-2.4.exe` (215 MB, SHA-256 `196A18B7…D2811DE`) to a GitHub Release instead of committing it.
 - [ ] Keep the Vercel download page linked. This checkout does not contain the `website/` source needed to rebuild it, so connect Vercel only after restoring that folder.

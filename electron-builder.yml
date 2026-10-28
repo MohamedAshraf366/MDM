@@ -25,6 +25,22 @@ extraResources:
 asar: true
 compression: normal
 
+# Harden the Electron runtime without breaking the bundled yt-dlp integration.
+# youtube.ts launches Electron as Node through ELECTRON_RUN_AS_NODE, so
+# runAsNode must stay enabled. The renderer is served over mdm://app
+# (src/main/renderer-protocol.ts), so file:// extra privileges stay disabled.
+# scripts/verify-fuses.mjs asserts these values on the packaged executable;
+# keep the two files in sync.
+electronFuses:
+  runAsNode: true
+  enableCookieEncryption: true
+  enableNodeOptionsEnvironmentVariable: false
+  enableNodeCliInspectArguments: false
+  enableEmbeddedAsarIntegrityValidation: true
+  onlyLoadAppFromAsar: true
+  loadBrowserProcessSpecificV8Snapshot: false
+  grantFileProtocolExtraPrivileges: false
+
 win:
   target:
     - target: nsis
@@ -32,6 +48,10 @@ win:
         - x64
   icon: assets/icon.ico
   requestedExecutionLevel: asInvoker
+  signtoolOptions:
+    signingHashAlgorithms:
+      - sha256
+    rfc3161TimeStampServer: https://timestamp.digicert.com
 
 nsis:
   artifactName: MDM-Setup-2.4.${ext}

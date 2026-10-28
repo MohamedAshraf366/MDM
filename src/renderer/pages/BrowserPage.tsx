@@ -112,8 +112,8 @@ export function BrowserPage() {
             <span className="page-eyebrow">Local bridge</span>
             <h2>Your browser, one hop away.</h2>
             <p>
-              MDM listens on a loopback-only port. The extension pairs automatically with a private token, so other
-              devices on your network cannot reach it.
+              MDM listens on a loopback-only port. Chrome and Edge pair automatically with a private token; Firefox
+              users paste the token shown below. Other devices on your network cannot reach the bridge.
             </p>
           </div>
         </div>
@@ -164,7 +164,7 @@ export function BrowserPage() {
           <div className="setting-row">
             <div>
               <strong>Extension token</strong>
-              <p>Used for automatic pairing. You do not need to copy it. Treat it like a local password.</p>
+              <p>Used for automatic pairing in Chrome/Edge and manual pairing in Firefox. Treat it like a local password.</p>
             </div>
             <div className="token-row">
               <code className={`token-value ${revealed ? '' : 'is-masked'}`.trim()}>
@@ -181,15 +181,15 @@ export function BrowserPage() {
           <div className="setting-row is-last">
             <div>
               <strong>Rotate token</strong>
-              <p>Installed extensions pair again automatically on their next request.</p>
+              <p>Chrome and Edge pair automatically. Firefox uses a random extension origin, so paste the token above.</p>
             </div>
             <Button variant="danger" size="sm" icon="refresh" onClick={() => setRegenerateOpen(true)}>
               Regenerate
             </Button>
           </div>
           <InlineNote tone="info">
-            The token is generated locally and stored with Windows DPAPI protection. It is shared only with installed
-            extensions during pairing and never sent to websites.
+            The token is generated locally and stored with Windows DPAPI protection. It is shared only with the
+            pinned Chrome/Edge extension during pairing (or copied by you for Firefox) and never sent to websites.
           </InlineNote>
         </Card>
 
@@ -214,6 +214,13 @@ export function BrowserPage() {
               <div>
                 <strong>Bounded requests</strong>
                 <p>JSON only, 64 KB maximum body, validated URLs and headers.</p>
+              </div>
+            </li>
+            <li>
+              <span className="security-icon"><Icon name="puzzle" size={16} /></span>
+              <div>
+                <strong>Pinned extension</strong>
+                <p>Chrome and Edge pairing accepts only this extension's ID. Firefox uses the manual token.</p>
               </div>
             </li>
           </ul>
@@ -273,7 +280,7 @@ export function BrowserPage() {
               <span>4</span>
               <div>
                 <strong>Open the extension</strong>
-                <p>It pairs with MDM automatically while the app is running. Use the token above only as a fallback.</p>
+                <p>It pairs with MDM automatically while the app is running. If pairing fails, paste the token above into its settings.</p>
               </div>
             </li>
           </ol>
@@ -297,7 +304,7 @@ export function BrowserPage() {
               <span>3</span>
               <div>
                 <strong>Open the add-on</strong>
-                <p>It pairs with MDM automatically while the app is running. Use the token above only as a fallback.</p>
+                <p>Copy the token above into the add-on's settings. Firefox uses a per-profile extension origin, so MDM cannot verify it automatically.</p>
               </div>
             </li>
             <li>

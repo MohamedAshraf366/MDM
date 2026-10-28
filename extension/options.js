@@ -50,10 +50,10 @@ function applyConfig(config) {
   fields.autoCapture.checked = config.autoCapture;
   fields.notifications.checked = config.notifications;
   if (config.token) {
-    setStatus(status, statusText, 'ok', 'Paired automatically');
+    setStatus(status, statusText, 'ok', 'Paired');
   } else {
     status.className = 'status';
-    statusText.textContent = 'Not paired';
+    statusText.textContent = ext.canAutoPair ? 'Not paired' : 'Token required';
   }
 }
 
@@ -65,7 +65,7 @@ function stopPairing() {
 }
 
 function schedulePairing(port) {
-  if (pairingTimer) return;
+  if (pairingTimer || !ext.canAutoPair) return;
   pairingTimer = window.setTimeout(async () => {
     pairingTimer = null;
     const config = await ext.getConfig();
@@ -94,6 +94,10 @@ async function loadSettings() {
   let config = await ext.getConfig();
   applyConfig(config);
   if (config.token) return;
+  if (!ext.canAutoPair) {
+    setStatus(status, statusText, 'checking', 'Paste the token from MDM');
+    return;
+  }
   setStatus(status, statusText, 'checking', 'Waiting for MDM');
   try {
     config = await ext.connect(config.port);
@@ -111,6 +115,10 @@ async function testConnection() {
     values = readForm();
   } catch (error) {
     setStatus(testStatus, testText, 'error', error.message);
+    return;
+  }
+  if (!values.token && !ext.canAutoPair) {
+    setStatus(testStatus, testText, 'error', 'Paste the bridge token from MDM first.');
     return;
   }
   stopPairing();
@@ -149,6 +157,7 @@ async function saveSettings(event) {
     const current = await ext.getConfig();
     let next = { ...current, ...values };
     if (!values.token) {
+      if (!ext.canAutoPair) throw new Error('Paste the bridge token from MDM before saving.');
       const paired = await ext.connect(values.port);
       next = { ...paired, autoCapture: values.autoCapture, notifications: values.notifications };
       applyConfig(next);
@@ -156,11 +165,11 @@ async function saveSettings(event) {
     }
     await ext.saveConfig(next);
     fields.token.value = next.token;
-    setSaveHint('Saved. The token was added automatically.');
+    setSaveHint(values.token ? 'Saved.' : 'Saved. The token was added automatically.');
     await testConnection();
   } catch (error) {
     setStatus(testStatus, testText, 'error', error.message);
-    if (!values.token) {
+    if (!values.token && ext.canAutoPair) {
       setStatus(status, statusText, 'checking', 'Waiting for MDM');
       schedulePairing(values.port);
     }

@@ -1,0 +1,7 @@
+extends: ./electron-builder.yml
+
+# Used by `npm run package:signed`. Regular `npm run package` stays usable on
+# machines without a certificate; this profile refuses to emit an unsigned
+# installer. Provide the certificate through CSC_LINK / WIN_CSC_LINK (and
+# CSC_KEY_PASSWORD / WIN_CSC_KEY_PASSWORD when the certificate has a password).
+forceCodeSigning: true

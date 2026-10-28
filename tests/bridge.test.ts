@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { BrowserBridge } from '../src/main/bridge';
 import type { AppLogger } from '../src/main/logger';
 import type { DownloadManager } from '../src/main/manager';
+import { CHROMIUM_EXTENSION_ID, CHROMIUM_EXTENSION_ORIGIN } from '../src/shared/extension';
 import type { AddDownloadResult, SiteRule } from '../src/shared/types';
 
 const TOKEN = 'test-bridge-token';
@@ -151,7 +152,7 @@ describe('browser bridge', () => {
     expect(localhost.status).toBe(200);
   });
 
-  it('pairs browser extensions without exposing the token to websites', async () => {
+  it('hands the token only to the pinned extension', async () => {
     const { bridge } = await harness();
     const denied = await request(bridge, '/pair');
     expect(denied.status).toBe(403);
@@ -159,24 +160,67 @@ describe('browser bridge', () => {
     const website = await request(bridge, '/pair', { headers: { Origin: 'https://example.com' } });
     expect(website.status).toBe(403);
 
-    const chrome = await request(bridge, '/pair', {
+    const otherChromeExtension = await request(bridge, '/pair', {
       headers: { Origin: 'chrome-extension://abcdefghijklmnopabcdefghijklmnop' }
     });
-    expect(chrome.status).toBe(200);
-    expect(JSON.parse(chrome.body)).toMatchObject({
-      ok: true,
-      data: { token: TOKEN }
-    });
+    expect(otherChromeExtension.status).toBe(403);
 
+    // Firefox origins contain a per-profile UUID, so they cannot be pinned.
+    // Firefox users paste the token shown in MDM instead of pairing silently.
     const firefox = await request(bridge, '/pair', {
       headers: { Origin: 'moz-extension://12345678-1234-1234-1234-123456789abc' }
     });
-    expect(firefox.status).toBe(200);
+    expect(firefox.status).toBe(403);
 
+    // Chrome extension workers omit Origin, so they identify themselves with
+    // the pinned ID and the Fetch Metadata of an extension fetch.
     const worker = await request(bridge, '/pair', {
-      headers: { 'Sec-Fetch-Site': 'none', 'Sec-Fetch-Mode': 'cors' }
+      headers: {
+        'X-MDM-Extension': CHROMIUM_EXTENSION_ID,
+        'Sec-Fetch-Site': 'none',
+        'Sec-Fetch-Mode': 'cors',
+        'Sec-Fetch-Dest': 'empty'
+      }
     });
     expect(worker.status).toBe(200);
+
+    const unmarkedWorker = await request(bridge, '/pair', {
+      headers: { 'Sec-Fetch-Site': 'none', 'Sec-Fetch-Mode': 'cors', 'Sec-Fetch-Dest': 'empty' }
+    });
+    expect(unmarkedWorker.status).toBe(403);
+
+    const wrongWorker = await request(bridge, '/pair', {
+      headers: {
+        'X-MDM-Extension': 'abcdefghijklmnopabcdefghijklmnop',
+        'Sec-Fetch-Site': 'none',
+        'Sec-Fetch-Mode': 'cors',
+        'Sec-Fetch-Dest': 'empty'
+      }
+    });
+    expect(wrongWorker.status).toBe(403);
+
+    // A page can attach the header but keeps its own Origin and cross-site
+    // Fetch Metadata, so it still cannot pair.
+    const pageWithHeader = await request(bridge, '/pair', {
+      headers: {
+        Origin: 'https://example.com',
+        'X-MDM-Extension': CHROMIUM_EXTENSION_ID,
+        'Sec-Fetch-Site': 'cross-site',
+        'Sec-Fetch-Mode': 'cors',
+        'Sec-Fetch-Dest': 'empty'
+      }
+    });
+    expect(pageWithHeader.status).toBe(403);
+
+    const pinned = await request(bridge, '/pair', {
+      headers: { Origin: CHROMIUM_EXTENSION_ORIGIN.toUpperCase() }
+    });
+    expect(pinned.status).toBe(200);
+    expect(JSON.parse(pinned.body)).toMatchObject({
+      ok: true,
+      data: { token: TOKEN }
+    });
+    expect(CHROMIUM_EXTENSION_ID).toMatch(/^[a-p]{32}$/);
   });
 
   it('lists queues for the authenticated extension', async () => {

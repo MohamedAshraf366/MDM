@@ -11,6 +11,7 @@ import type {
   MediaProbeResult
 } from '../shared/types';
 import { APP_NAME, APP_VERSION } from '../shared/defaults';
+import { CHROMIUM_EXTENSION_ID, CHROMIUM_EXTENSION_ORIGIN } from '../shared/extension';
 import { isReasonableUrlLength } from '../shared/validation';
 
 const MAX_BODY_BYTES = 64 * 1024;
@@ -203,7 +204,7 @@ export class BrowserBridge {
     response.setHeader('Access-Control-Allow-Origin', origin || '*');
     response.setHeader('Vary', 'Origin');
     response.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-    response.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-MDM-Token');
+    response.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-MDM-Token, X-MDM-Extension');
     response.setHeader('Access-Control-Max-Age', '600');
     response.setHeader('Cache-Control', 'no-store');
     response.setHeader('X-Content-Type-Options', 'nosniff');
@@ -489,16 +490,27 @@ function parseBridgeRequest(value: unknown): BrowserBridgeRequest {
   };
 }
 
-function isBrowserExtensionOrigin(origin: string): boolean {
-  return /^(?:chrome-extension|moz-extension|ms-browser-extension|safari-web-extension):\/\/[a-z0-9-]+$/i.test(origin);
-}
-
+/**
+ * Only the bundled extension may collect the bridge token.
+ *
+ * Chrome and Edge report `chrome-extension://<id>` as the Origin when they
+ * attach one, and the browser enforces that header. Their extension service
+ * workers omit Origin for loopback fetches, so those requests must instead
+ * carry `X-MDM-Extension: <id>` together with the Fetch Metadata of an
+ * extension-initiated CORS request. A web page cannot produce that combination:
+ * its Origin is always present and its Sec-Fetch-Site is cross-site/same-origin.
+ *
+ * Firefox reports a random `moz-extension://<uuid>` per profile and offers no
+ * way to verify the add-on in this request, so Firefox users paste the token
+ * shown in MDM instead. There is no unverified fallback.
+ */
 function isBrowserExtensionPairRequest(request: http.IncomingMessage, origin: string): boolean {
-  if (isBrowserExtensionOrigin(origin)) return true;
+  if (origin) return origin.toLowerCase() === CHROMIUM_EXTENSION_ORIGIN;
   return (
-    !origin &&
+    String(request.headers['x-mdm-extension'] ?? '').toLowerCase() === CHROMIUM_EXTENSION_ID &&
     request.headers['sec-fetch-site'] === 'none' &&
-    request.headers['sec-fetch-mode'] === 'cors'
+    request.headers['sec-fetch-mode'] === 'cors' &&
+    request.headers['sec-fetch-dest'] === 'empty'
   );
 }
 

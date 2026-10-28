@@ -8,6 +8,7 @@ import { sanitizeFileName } from '../shared/validation';
 import { hashFile } from './checksum';
 import { DownloadError } from './errors';
 import { atomicPlace, checkDiskSpace, resolveTargetPath } from './fs-utils';
+import { prepareYtDlpRequest } from './ytdlp-request';
 import type {
   DownloadConfig,
   EngineCallbacks,
@@ -148,25 +149,31 @@ async function probeWithYtDlp(
   genericFallback = false
 ): Promise<MediaProbeResult> {
   const binary = requireYtDlp(runtime);
-  const buildArgs = (extra: string[]): string[] => [
+  const buildArgs = (extra: string[], requestArgs: string[]): string[] => [
     ...baseArgs(runtime),
     '--dump-single-json',
     '--skip-download',
     ...extra,
-    ...requestArgs(headers, cookies),
+    ...requestArgs,
     '--',
     url
   ];
-  const run = (extra: string[]): Promise<YtDlpRunResult> =>
-    runYtDlp({
-      binary,
-      args: buildArgs(extra),
-      env: toolEnvironment(runtime),
-      timeoutMs: PROBE_TIMEOUT_MS,
-      idleTimeoutMs: PROBE_IDLE_TIMEOUT_MS,
-      collectStdout: true,
-      maxStdoutBytes: MAX_PROBE_BYTES
-    });
+  const run = async (extra: string[]): Promise<YtDlpRunResult> => {
+    const request = await prepareYtDlpRequest(url, headers, cookies);
+    try {
+      return await runYtDlp({
+        binary,
+        args: buildArgs(extra, request.args),
+        env: toolEnvironment(runtime),
+        timeoutMs: PROBE_TIMEOUT_MS,
+        idleTimeoutMs: PROBE_IDLE_TIMEOUT_MS,
+        collectStdout: true,
+        maxStdoutBytes: MAX_PROBE_BYTES
+      });
+    } finally {
+      await request.cleanup();
+    }
+  };
   let result = await run([]);
   if (
     genericFallback &&
@@ -231,27 +238,9 @@ function baseArgs(runtime: EngineRuntime): string[] {
   return args;
 }
 
-function requestArgs(headers: Record<string, string>, cookies: string): string[] {
-  const args: string[] = [];
-  const cookie = cookies.trim() || headerValue(headers, 'cookie');
-  if (cookie) args.push('--add-header', `Cookie: ${cookie}`);
-  const userAgent = headerValue(headers, 'user-agent');
-  if (userAgent) args.push('--user-agent', userAgent);
-  const language = headerValue(headers, 'accept-language');
-  if (language) args.push('--add-header', `Accept-Language: ${language}`);
-  const referrer = headerValue(headers, 'referer');
-  if (referrer) args.push('--add-header', `Referer: ${referrer}`);
-  return args;
-}
-
 function toolEnvironment(runtime: EngineRuntime): NodeJS.ProcessEnv {
   if (!runtime.jsRuntimePath) return { ...process.env };
   return { ...process.env, ELECTRON_RUN_AS_NODE: '1' };
-}
-
-function headerValue(headers: Record<string, string>, name: string): string {
-  const entry = Object.entries(headers).find(([key]) => key.toLowerCase() === name);
-  return entry?.[1]?.trim() ?? '';
 }
 
 export function buildYouTubeProbe(url: string, source: YtInfo, siteLabel = 'YouTube'): MediaProbeResult {
@@ -717,7 +706,7 @@ export class YtDlpDownloadTask {
   private async download(): Promise<void> {
     if (!this.prepared || !this.state) throw new DownloadError(`${this.siteLabel} download not prepared.`, 'INTERNAL');
     const binary = requireYtDlp(this.runtime);
-    const buildArgs = (infoJsonPath: string | null, extra: string[] = []): string[] => {
+    const buildArgs = (infoJsonPath: string | null, requestArgs: string[], extra: string[] = []): string[] => {
       const args = [
         ...baseArgs(this.runtime),
         '--newline',
@@ -740,25 +729,34 @@ export class YtDlpDownloadTask {
         ...(infoJsonPath ? ['--load-info-json', infoJsonPath] : []),
         '--output',
         path.join(this.prepared!.tempPath, 'media.%(ext)s'),
-        ...requestArgs(this.config.headers, this.config.cookies)
+        ...requestArgs
       ];
       if (!infoJsonPath) args.push('--', this.config.url);
       if (this.runtime.ffmpegPath) args.push('--ffmpeg-location', this.runtime.ffmpegPath);
       return args;
     };
-    const runAttempt = (infoJsonPath: string | null, extra: string[] = []): Promise<YtDlpRunResult> =>
-      runYtDlp({
-        binary,
-        args: buildArgs(infoJsonPath, extra),
-        env: toolEnvironment(this.runtime),
-        idleTimeoutMs: DOWNLOAD_IDLE_TIMEOUT_MS,
-        onSpawn: (child) => {
-          this.child = child;
-          if (this.paused || this.canceled) terminateProcess(child);
-        },
-        onStdoutLine: (line) => this.handleStdoutLine(line),
-        onStderrLine: (line) => this.handleStderrLine(line)
-      });
+    const runAttempt = async (
+      infoJsonPath: string | null,
+      extra: string[] = []
+    ): Promise<YtDlpRunResult> => {
+      const request = await prepareYtDlpRequest(this.config.url, this.config.headers, this.config.cookies);
+      try {
+        return await runYtDlp({
+          binary,
+          args: buildArgs(infoJsonPath, request.args, extra),
+          env: toolEnvironment(this.runtime),
+          idleTimeoutMs: DOWNLOAD_IDLE_TIMEOUT_MS,
+          onSpawn: (child) => {
+            this.child = child;
+            if (this.paused || this.canceled) terminateProcess(child);
+          },
+          onStdoutLine: (line) => this.handleStdoutLine(line),
+          onStderrLine: (line) => this.handleStderrLine(line)
+        });
+      } finally {
+        await request.cleanup();
+      }
+    };
     // Prefer the saved quality-list extraction: no second page extraction,
     // no repeated JS-challenge solving. Falls back to a fresh URL extraction
     // when the cached data is rejected (e.g. signed URLs expired).

@@ -149,7 +149,7 @@ export function ExtensionSetupDialog() {
             <span>4</span>
             <div>
               <strong>Pair and reload</strong>
-              <p>It pairs automatically. Reload it after Firefox restarts.</p>
+              <p>Paste the bridge token from MDM, then test the connection. Reload after Firefox restarts.</p>
             </div>
           </li>
         </ol>

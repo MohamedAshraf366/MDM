@@ -1,14 +1,19 @@
 import assert from 'node:assert/strict';
+import { spawn, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { createServer } from 'node:http';
 import fsp from 'node:fs/promises';
 import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
-import { _electron as electron } from 'playwright';
+import { _electron as electron, chromium } from 'playwright';
 
 const root = process.cwd();
 const packaged = process.argv.includes('--packaged');
+const extensionManifest = JSON.parse(await fsp.readFile(path.join(root, 'extension', 'manifest.json'), 'utf8'));
+const pinnedExtensionId = [...createHash('sha256').update(Buffer.from(extensionManifest.key, 'base64')).digest('hex').slice(0, 32)]
+  .map((digit) => String.fromCharCode(97 + Number.parseInt(digit, 16)))
+  .join('');
 const executablePath = packaged ? path.join(root, 'release', 'win-unpacked', 'MDM - Mohamed Download Manager.exe') : undefined;
 if (packaged) await fsp.access(executablePath);
 const userData = await fsp.mkdtemp(path.join(os.tmpdir(), 'mdm-smoke-'));
@@ -50,20 +55,85 @@ await new Promise((resolve) => bridgeProbe.listen(0, '127.0.0.1', resolve));
 const bridgePort = bridgeProbe.address().port;
 await new Promise((resolve) => bridgeProbe.close(resolve));
 
-let electronApp = null;
-try {
-  electronApp = await electron.launch({
-    executablePath,
-    args: packaged ? [] : ['.'],
-    cwd: root,
-    env: {
-      ...process.env,
-      MDM_USER_DATA_DIR: userData,
-      MDM_DEV: '',
-      VITE_DEV_SERVER_URL: ''
+async function reservePort() {
+  const probe = net.createServer();
+  await new Promise((resolve) => probe.listen(0, '127.0.0.1', resolve));
+  const port = probe.address().port;
+  await new Promise((resolve) => probe.close(resolve));
+  return port;
+}
+
+async function waitForDevTools(port, child, readStderr) {
+  const deadline = Date.now() + 30_000;
+  while (Date.now() < deadline) {
+    if (child.exitCode !== null) {
+      throw new Error(`The packaged app exited before DevTools was ready (${child.exitCode}).\n${readStderr()}`);
     }
-  });
-  const window = await electronApp.firstWindow({ timeout: 30_000 });
+    try {
+      const response = await fetch(`http://127.0.0.1:${port}/json/version`);
+      if (response.ok) return;
+    } catch {
+      // The Chromium debug endpoint usually starts a moment after the window.
+    }
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  throw new Error(`Timed out waiting for the packaged app DevTools endpoint.\n${readStderr()}`);
+}
+
+async function waitForAppPage(context) {
+  const deadline = Date.now() + 30_000;
+  while (Date.now() < deadline) {
+    const page = context.pages().find((candidate) => candidate.url().startsWith('mdm://app/'));
+    if (page) return page;
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  throw new Error('The packaged app did not load its mdm://app renderer.');
+}
+
+let electronApp = null;
+let cdpBrowser = null;
+let appProcess = null;
+try {
+  let window;
+  if (packaged) {
+    // enableNodeCliInspectArguments is disabled in the packaged app, so
+    // Playwright's Electron launcher (which attaches through the Node
+    // inspector) cannot connect. Drive the hardened app through Chromium's
+    // remote-debugging port instead; every check below uses the renderer API.
+    const debugPort = await reservePort();
+    let stderr = '';
+    appProcess = spawn(executablePath, [`--remote-debugging-port=${debugPort}`], {
+      cwd: root,
+      env: {
+        ...process.env,
+        MDM_USER_DATA_DIR: userData,
+        MDM_DEV: '',
+        VITE_DEV_SERVER_URL: ''
+      },
+      stdio: ['ignore', 'ignore', 'pipe']
+    });
+    appProcess.stderr?.on('data', (chunk) => {
+      stderr = `${stderr}${chunk.toString()}`.slice(-8000);
+    });
+    await waitForDevTools(debugPort, appProcess, () => stderr);
+    cdpBrowser = await chromium.connectOverCDP(`http://127.0.0.1:${debugPort}`);
+    const context = cdpBrowser.contexts()[0];
+    assert.ok(context, 'the packaged app did not expose a browser context');
+    window = await waitForAppPage(context);
+  } else {
+    electronApp = await electron.launch({
+      executablePath,
+      args: ['.'],
+      cwd: root,
+      env: {
+        ...process.env,
+        MDM_USER_DATA_DIR: userData,
+        MDM_DEV: '',
+        VITE_DEV_SERVER_URL: ''
+      }
+    });
+    window = await electronApp.firstWindow({ timeout: 30_000 });
+  }
   const pageErrors = [];
   window.on('pageerror', (error) => pageErrors.push(error.message));
   await window.waitForSelector('.app-shell', { timeout: 30_000 });
@@ -108,7 +178,12 @@ try {
   assert.equal(health.data.app, 'MDM - Mohamed Download Manager');
 
   const pairResponse = await fetch(`http://127.0.0.1:${bridgePort}/pair`, {
-    headers: { 'Sec-Fetch-Site': 'none', 'Sec-Fetch-Mode': 'cors' }
+    headers: {
+      'X-MDM-Extension': pinnedExtensionId,
+      'Sec-Fetch-Site': 'none',
+      'Sec-Fetch-Mode': 'cors',
+      'Sec-Fetch-Dest': 'empty'
+    }
   });
   const pairPayload = await pairResponse.json();
   assert.equal(pairResponse.status, 200, 'extension pairing failed');
@@ -274,6 +349,15 @@ try {
   );
 } finally {
   await electronApp?.close().catch(() => undefined);
+  if (appProcess) {
+    if (process.platform === 'win32') {
+      const taskkill = path.join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'taskkill.exe');
+      spawnSync(taskkill, ['/pid', String(appProcess.pid), '/t', '/f'], { stdio: 'ignore' });
+    } else {
+      appProcess.kill('SIGKILL');
+    }
+    await cdpBrowser?.close().catch(() => undefined);
+  }
   await new Promise((resolve) => server.close(resolve));
   for (let attempt = 0; attempt < 10; attempt++) {
     try {
