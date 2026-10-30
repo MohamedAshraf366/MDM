@@ -1,6 +1,7 @@
 import fsp from 'node:fs/promises';
 import path from 'node:path';
 import zlib from 'node:zlib';
+import { DEFAULT_TURBO_TUNING, TurboController, isServerPushback, type TurboStopReason } from './turbo';
 import type { DownloadSegment, ChecksumAlgorithm, ChecksumStatus } from '../shared/types';
 import {
   deriveFileNameFromUrl,
@@ -68,6 +69,14 @@ export interface ResolvedResume {
   reused: boolean;
 }
 
+/** Thrown inside a worker Turbo added when the server refuses it: the worker retires, the download goes on. */
+class TurboRetire extends Error {
+  constructor() {
+    super('Turbo connection retired');
+    this.name = 'TurboRetire';
+  }
+}
+
 export class HttpDownloadTask {
   private readonly config: DownloadConfig;
   private readonly runtime: EngineRuntime;
@@ -89,6 +98,10 @@ export class HttpDownloadTask {
   private compressedDownload = false;
   private readonly claimed = new Set<number>();
   private nextSegmentIndex = 0;
+  private activeWorkers = 0;
+  private workerTarget = 0;
+  private turboBaseWorkers = 0;
+  private turboPushback = false;
 
   constructor(config: DownloadConfig, runtime: EngineRuntime, callbacks: EngineCallbacks) {
     this.config = config;
@@ -431,15 +444,40 @@ export class HttpDownloadTask {
     if (!this.prepared.segments.length) return;
 
     this.emitProgress('downloading');
+    let allowTurbo = true;
+    let recoveredWithoutTurbo = false;
     for (;;) {
       this.nextSegmentIndex = this.prepared.segments.reduce((max, segment) => Math.max(max, segment.index + 1), 0);
       this.claimed.clear();
       const workerCount = Math.max(1, this.config.connections);
-      const workers: Promise<void>[] = [];
-      for (let index = 0; index < workerCount; index += 1) {
-        workers.push(this.downloadWorker());
+      const results: PromiseSettledResult<void>[] = [];
+      const pool = new Set<Promise<void>>();
+      // Workers can be added while the download runs (Turbo), so track them in a set.
+      const spawn = (optional = false): void => {
+        const worker: Promise<void> = this.downloadWorker(optional)
+          .then(
+            () => {
+              results.push({ status: 'fulfilled', value: undefined });
+            },
+            (reason: unknown) => {
+              results.push({ status: 'rejected', reason });
+            }
+          )
+          .finally(() => {
+            pool.delete(worker);
+          });
+        pool.add(worker);
+      };
+      this.workerTarget = workerCount;
+      this.turboBaseWorkers = workerCount;
+      this.turboPushback = false;
+      for (let index = 0; index < workerCount; index += 1) spawn();
+      const stopTurbo = allowTurbo ? this.startTurbo(spawn, workerCount) : (): void => undefined;
+      try {
+        while (pool.size > 0) await Promise.race(pool);
+      } finally {
+        stopTurbo();
       }
-      const results = await Promise.allSettled(workers);
       if (this.rangeFallback && !this.paused && !this.canceled) {
         this.rangeFallback = false;
         this.log('warn', 'The server ignored range requests; restarting with a single connection.');
@@ -449,6 +487,16 @@ export class HttpDownloadTask {
       const failure = results.find((result): result is PromiseRejectedResult => result.status === 'rejected');
       if (failure) throw failure.reason;
       if (this.prepared.segments.every((segment) => segment.status === 'complete')) return;
+      // Surplus Turbo workers hand their range back and retire when the server
+      // refuses them. If every remaining worker was one of those, work is left
+      // with nobody running; finish the file with the base connections rather
+      // than failing a download that can still complete.
+      if (!recoveredWithoutTurbo) {
+        recoveredWithoutTurbo = true;
+        allowTurbo = false;
+        this.log('warn', 'Turbo connections were refused; finishing with the base connections.');
+        continue;
+      }
       throw new DownloadError('The download finished with incomplete segments.', 'INTERNAL');
     }
   }
@@ -458,22 +506,37 @@ export class HttpDownloadTask {
    * when none is left, splits the largest in-progress segment and steals its
    * tail. Fast connections therefore never idle while a slow one grinds on.
    */
-  private async downloadWorker(): Promise<void> {
+  private async downloadWorker(optional: boolean): Promise<void> {
+    this.activeWorkers += 1;
+    try {
+      await this.workerLoop(optional);
+    } catch (error) {
+      // An extra Turbo connection the server turned away is not a failed download.
+      if (error instanceof TurboRetire) return;
+      throw error;
+    } finally {
+      this.activeWorkers -= 1;
+    }
+  }
+
+  private async workerLoop(optional: boolean): Promise<void> {
     for (;;) {
       if (this.paused || this.canceled) throw new DownloadError('The download was stopped.', 'ABORTED');
+      // Turbo gave connections back: surplus workers retire between segments.
+      if (this.activeWorkers > this.workerTarget && this.activeWorkers > 1) return;
       const segment = this.claimSegment();
       if (!segment) {
         const stolen = this.splitLargestSegment();
         if (!stolen) return;
         try {
-          await this.downloadSegment(stolen);
+          await this.downloadSegment(stolen, optional);
         } finally {
           this.claimed.delete(stolen.index);
         }
         continue;
       }
       try {
-        await this.downloadSegment(segment);
+        await this.downloadSegment(segment, optional);
       } finally {
         this.claimed.delete(segment.index);
       }
@@ -489,6 +552,98 @@ export class HttpDownloadTask {
       }
     }
     return null;
+  }
+
+  /**
+   * How many more connections the unfinished data can really keep busy. A new
+   * worker first takes an unclaimed range; only when none are left does it
+   * split the largest in-progress range in half. Ranges under
+   * SEGMENT_SPLIT_THRESHOLD cannot be split, so this repeats that exactly.
+   */
+  private splitHeadroom(limit: number): number {
+    if (!this.prepared) return 0;
+    const remaining: number[] = [];
+    let unclaimed = 0;
+    for (const segment of this.prepared.segments) {
+      if (segment.status === 'complete' || segment.endByte === null) continue;
+      remaining.push(segment.endByte - segment.startByte + 1 - segment.downloadedBytes);
+      if (!this.claimed.has(segment.index)) unclaimed += 1;
+    }
+    // An unclaimed range feeds a connection without splitting anything.
+    let slots = Math.min(limit, unclaimed);
+    // Once every range is in progress, each split of a large enough range feeds one more.
+    while (slots < limit) {
+      let largest = 0;
+      for (let index = 1; index < remaining.length; index += 1) {
+        if (remaining[index]! > remaining[largest]!) largest = index;
+      }
+      const size = remaining[largest] ?? 0;
+      if (size < SEGMENT_SPLIT_THRESHOLD) break;
+      remaining[largest] = Math.ceil(size / 2);
+      remaining.push(Math.floor(size / 2));
+      slots += 1;
+    }
+    return slots;
+  }
+
+  /**
+   * Turbo: keep adding connections while throughput keeps rising, then stop.
+   * Everything it changes (extra workers, the raised per-host and socket caps)
+   * belongs to this call and is handed back by the function it returns.
+   */
+  private startTurbo(spawn: (optional?: boolean) => void, baseWorkers: number): () => void {
+    const turbo = this.config.turbo;
+    const prepared = this.prepared;
+    const noop = (): void => undefined;
+    if (!turbo || !prepared || !prepared.resumable || prepared.totalBytes === null) return noop;
+    const ceiling = Math.floor(turbo.maxConnections);
+    if (ceiling <= baseWorkers) return noop;
+    // A speed limit means "do not use more": more connections would be pointless.
+    if (this.config.speedLimitBps > 0 || this.runtime.globalLimiter.getRate() > 0) return noop;
+    if (this.splitHeadroom(2) < 2) return noop;
+
+    const tuning = { ...DEFAULT_TURBO_TUNING, ...turbo.tuning };
+    const controller = new TurboController(baseWorkers, ceiling, tuning);
+    const releaseHost = this.runtime.hostLimiter.boost(ceiling);
+    const releaseSockets = this.runtime.http.boostSockets(ceiling);
+    const mbit = (rate: number): string => `${((rate * 8) / 1_000_000).toFixed(1)} Mbit/s`;
+    const reasons: Record<TurboStopReason, string> = {
+      plateau: 'more connections no longer increase the speed',
+      ceiling: 'the connection limit was reached',
+      'server-limit': 'the server limited parallel connections',
+      'no-work': 'too little is left to split between more connections'
+    };
+    let lastAt = performance.now();
+    let lastBytes = this.downloadedTotal;
+    this.log('info', `Turbo: starting from ${baseWorkers} connections (up to ${ceiling}).`);
+    const timer = setInterval(() => {
+      if (this.paused || this.canceled) return;
+      const now = performance.now();
+      const rate = ((this.downloadedTotal - lastBytes) * 1000) / Math.max(1, now - lastAt);
+      lastAt = now;
+      lastBytes = this.downloadedTotal;
+      const pushback = this.turboPushback;
+      this.turboPushback = false;
+      const limited = this.config.speedLimitBps > 0 || this.runtime.globalLimiter.getRate() > 0;
+      const headroom = limited ? 0 : this.splitHeadroom(ceiling - this.workerTarget);
+      const decision = controller.sample(rate, { pushback, headroom });
+      if (decision.action === 'grow') {
+        const added = decision.target - this.workerTarget;
+        this.workerTarget = decision.target;
+        for (let index = 0; index < added; index += 1) spawn(true);
+        this.log('info', `Turbo: now ${decision.target} connections (${mbit(decision.baselineRate)} before this step).`);
+      } else if (decision.action === 'stop') {
+        this.workerTarget = decision.target;
+        this.log('info', `Turbo: holding at ${decision.target} connections around ${mbit(decision.rate)}; ${reasons[decision.reason]}.`);
+        clearInterval(timer);
+      }
+    }, tuning.sampleMs);
+    timer.unref?.();
+    return () => {
+      clearInterval(timer);
+      releaseHost();
+      releaseSockets();
+    };
   }
 
   private splitLargestSegment(): DownloadSegment | null {
@@ -535,7 +690,7 @@ export class HttpDownloadTask {
     this.emitProgress('downloading');
   }
 
-  private async downloadSegment(segment: DownloadSegment): Promise<void> {
+  private async downloadSegment(segment: DownloadSegment, optional = false): Promise<void> {
     let attempts = 0;
     for (;;) {
       if (this.paused || this.canceled) throw new DownloadError('The download was stopped.', 'ABORTED');
@@ -562,6 +717,10 @@ export class HttpDownloadTask {
           throw error;
         }
         const mapped = mapNetworkError(error);
+        if (this.workerTarget > this.turboBaseWorkers && isServerPushback(mapped)) this.turboPushback = true;
+        // Surplus Turbo connections do not get a retry budget: hand the range back
+        // (its progress is kept) and let the controller settle at a count the server accepts.
+        if (optional && isServerPushback(mapped)) throw new TurboRetire();
         // Retry budget is per segment: one flaky range must not consume the
         // whole download's allowance.
         const retryLimit = retryLimitFor(mapped, this.config.maxRetries);

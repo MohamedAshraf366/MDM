@@ -182,19 +182,34 @@ export function sharesCredentialScope(origin: string, target: string): boolean {
   }
 }
 
+let baseMaxSockets: number | null = null;
+const socketLeases = new Set<{ limit: number }>();
+
+function applyDirectAgentLimit(): void {
+  if (baseMaxSockets === null) return;
+  let limit = baseMaxSockets;
+  for (const lease of socketLeases) limit = Math.max(limit, lease.limit);
+  for (const agent of [directHttpAgent, directHttpsAgent, insecureHttpsAgent]) {
+    if (!agent) continue;
+    agent.maxSockets = limit;
+    agent.maxFreeSockets = limit;
+  }
+}
+
 export function setDirectAgentMaxSockets(maxSockets: number): void {
-  if (directHttpAgent) {
-    directHttpAgent.maxSockets = maxSockets;
-    directHttpAgent.maxFreeSockets = maxSockets;
-  }
-  if (directHttpsAgent) {
-    directHttpsAgent.maxSockets = maxSockets;
-    directHttpsAgent.maxFreeSockets = maxSockets;
-  }
-  if (insecureHttpsAgent) {
-    insecureHttpsAgent.maxSockets = maxSockets;
-    insecureHttpsAgent.maxFreeSockets = maxSockets;
-  }
+  baseMaxSockets = maxSockets;
+  applyDirectAgentLimit();
+}
+
+/** Temporarily raises the shared agents' socket cap; call the result to restore it. */
+export function boostDirectAgentSockets(limit: number): () => void {
+  const lease = { limit: Math.max(1, Math.floor(limit)) };
+  socketLeases.add(lease);
+  applyDirectAgentLimit();
+  return () => {
+    if (!socketLeases.delete(lease)) return;
+    applyDirectAgentLimit();
+  };
 }
 
 let directHttpAgent: http.Agent | null = null;
@@ -257,6 +272,35 @@ export class HttpClient {
       this.proxyHttpAgent = null;
       this.proxyHttpsAgent = null;
     }
+  }
+
+  private readonly proxyLeases = new Set<{ limit: number }>();
+
+  private applyProxyLimit(): void {
+    let limit = this.options.maxSocketsPerHost;
+    for (const lease of this.proxyLeases) limit = Math.max(limit, lease.limit);
+    for (const agent of [this.proxyHttpAgent, this.proxyHttpsAgent]) {
+      if (!agent) continue;
+      agent.maxSockets = limit;
+      agent.maxFreeSockets = limit;
+    }
+  }
+
+  /**
+   * Temporarily raises the socket cap per host for Turbo downloads. Without
+   * this the agent would queue extra connections no matter how many workers run.
+   * Call the returned function to restore the configured cap.
+   */
+  boostSockets(limit: number): () => void {
+    const releaseDirect = boostDirectAgentSockets(limit);
+    const lease = { limit: Math.max(1, Math.floor(limit)) };
+    this.proxyLeases.add(lease);
+    this.applyProxyLimit();
+    return () => {
+      releaseDirect();
+      if (!this.proxyLeases.delete(lease)) return;
+      this.applyProxyLimit();
+    };
   }
 
   get defaultUserAgent(): string {
@@ -505,6 +549,8 @@ export class HttpClient {
         autoSelectFamilyAttemptTimeout: 300
       });
     }
+    baseMaxSockets ??= this.options.maxSocketsPerHost;
+    applyDirectAgentLimit();
     return directHttpAgent;
   }
 
@@ -523,6 +569,8 @@ export class HttpClient {
           rejectUnauthorized: false
         });
       }
+      baseMaxSockets ??= this.options.maxSocketsPerHost;
+      applyDirectAgentLimit();
       return insecureHttpsAgent;
     }
     if (!directHttpsAgent) {
@@ -539,6 +587,8 @@ export class HttpClient {
         ca: getTrustedCAs()
       });
     }
+    baseMaxSockets ??= this.options.maxSocketsPerHost;
+    applyDirectAgentLimit();
     return directHttpsAgent;
   }
 }

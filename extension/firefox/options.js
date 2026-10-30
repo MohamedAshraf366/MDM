@@ -64,6 +64,14 @@ function stopPairing() {
   }
 }
 
+function isPairDeclined(error) {
+  return error?.code === 'pair-declined';
+}
+
+function declinedMessage() {
+  return 'Pairing was declined in MDM. Choose Test connection to ask again.';
+}
+
 function schedulePairing(port) {
   if (pairingTimer || !ext.canAutoPair) return;
   pairingTimer = window.setTimeout(async () => {
@@ -74,7 +82,11 @@ function schedulePairing(port) {
       const paired = await ext.connect(port);
       applyConfig(paired);
       setStatus(status, statusText, 'ok', 'Connected automatically');
-    } catch {
+    } catch (error) {
+      if (isPairDeclined(error)) {
+        setStatus(status, statusText, 'error', declinedMessage());
+        return;
+      }
       setStatus(status, statusText, 'checking', 'Waiting for MDM');
       schedulePairing(port);
     }
@@ -103,7 +115,11 @@ async function loadSettings() {
     config = await ext.connect(config.port);
     applyConfig(config);
     setStatus(status, statusText, 'ok', 'Connected automatically');
-  } catch {
+  } catch (error) {
+    if (isPairDeclined(error)) {
+      setStatus(status, statusText, 'error', declinedMessage());
+      return;
+    }
     setStatus(status, statusText, 'checking', 'Waiting for MDM');
     schedulePairing(config.port);
   }
@@ -134,7 +150,7 @@ async function testConnection() {
   } catch (error) {
     setStatus(status, statusText, 'error', 'Not connected');
     setStatus(testStatus, testText, 'error', error.message);
-    if (!values.token) schedulePairing(values.port);
+    if (!values.token && ext.canAutoPair && !isPairDeclined(error)) schedulePairing(values.port);
   } finally {
     buttons.test.disabled = false;
     buttons.test.textContent = 'Test connection';
@@ -169,7 +185,7 @@ async function saveSettings(event) {
     await testConnection();
   } catch (error) {
     setStatus(testStatus, testText, 'error', error.message);
-    if (!values.token && ext.canAutoPair) {
+    if (!values.token && ext.canAutoPair && !isPairDeclined(error)) {
       setStatus(status, statusText, 'checking', 'Waiting for MDM');
       schedulePairing(values.port);
     }

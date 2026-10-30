@@ -335,6 +335,26 @@ export function SettingsPage() {
                 onChange={(value) => update('defaultSpeedLimitBps', value)}
               />
             </div>
+            <ToggleRow
+              title="Turbo mode"
+              description="While a download runs, keep adding connections until the speed stops rising, so it uses all the bandwidth available. Extra connections are released when the download ends. Ignored when a speed limit is set."
+              checked={draft.turboMode}
+              onChange={(value) => update('turboMode', value)}
+              last={!draft.turboMode}
+            />
+            {draft.turboMode ? (
+              <div className="settings-number-grid">
+                <Field label="Turbo: most connections per download" hint="2–64. Some servers block high counts.">
+                  <TextInput
+                    type="number"
+                    min={2}
+                    max={64}
+                    value={draft.turboMaxConnections}
+                    onChange={(event) => update('turboMaxConnections', Number(event.target.value))}
+                  />
+                </Field>
+              </div>
+            ) : null}
             <InlineNote tone="info">Set a speed limit to 0 for unlimited. Limits apply to the total session, not each connection.</InlineNote>
           </Card>
 

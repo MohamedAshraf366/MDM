@@ -9,6 +9,10 @@
   // chrome-extension://<id> origin, which MDM pins to this extension.
   const autoPairSupported = !/^moz-extension:/i.test(api.runtime.getURL(''));
 
+  // Pairing now opens a confirmation dialog in MDM, so the fetch must wait for
+  // a person to read it instead of giving up after a few seconds.
+  const PAIR_TIMEOUT_MS = 120_000;
+
   const PAGE_MEDIA_PATTERN = /\.(m3u8|m3u|mpd|mp4|m4v|mkv|webm|mov|flv|avi|ts|mp3|m4a|aac|flac|wav|ogg|opus)(?:$|[?#])/i;
 
   const DEFAULT_CONFIG = {
@@ -58,7 +62,7 @@
     const current = await getConfig();
     const target = clampPort(port ?? current.port);
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 5000);
+    const timer = setTimeout(() => controller.abort(), PAIR_TIMEOUT_MS);
     let response;
     try {
       response = await fetch(`http://127.0.0.1:${target}/pair`, {
@@ -68,7 +72,7 @@
         signal: controller.signal
       });
     } catch (error) {
-      const reason = error?.name === 'AbortError' ? 'the request timed out' : 'the bridge is not reachable';
+      const reason = error?.name === 'AbortError' ? 'the pairing request timed out' : 'the bridge is not reachable';
       throw new Error(`Could not reach MDM on 127.0.0.1:${target} - ${reason}. Start MDM and try again.`);
     } finally {
       clearTimeout(timer);
@@ -81,7 +85,9 @@
       payload = null;
     }
     if (!response.ok || payload?.ok === false) {
-      throw new Error(payload?.error || `MDM returned HTTP ${response.status}.`);
+      const error = new Error(payload?.error || `MDM returned HTTP ${response.status}.`);
+      if (payload?.data?.declined === true) error.code = 'pair-declined';
+      throw error;
     }
     const token = typeof payload?.data?.token === 'string' ? payload.data.token.trim() : '';
     if (!token) throw new Error('MDM did not return a bridge token.');

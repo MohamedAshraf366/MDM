@@ -18,6 +18,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   defaultConnections: 8,
   maxConcurrentDownloads: 3,
   maxConnectionsPerHost: 8,
+  turboMode: false,
+  turboMaxConnections: 16,
   globalSpeedLimitBps: 0,
   defaultSpeedLimitBps: 0,
   connectTimeoutMs: 20_000,

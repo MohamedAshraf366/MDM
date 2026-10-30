@@ -7,8 +7,8 @@ if (!link) {
     [
       'Signed packaging needs a code-signing certificate.',
       '',
-      'Set CSC_LINK or WIN_CSC_LINK to a .pfx file path (or a base64-encoded certificate),',
-      'and set CSC_KEY_PASSWORD or WIN_CSC_KEY_PASSWORD when the certificate has a password.',
+      'Set CSC_LINK or WIN_CSC_LINK to a .pfx file path, an https:// URL that electron-builder can download,',
+      'or a base64-encoded certificate. Set CSC_KEY_PASSWORD or WIN_CSC_KEY_PASSWORD when it has a password.',
       '',
       'Then run: npm run package:signed'
     ].join('\n')
@@ -16,14 +16,29 @@ if (!link) {
   process.exit(1);
 }
 
-const looksLikePath = !/^[A-Za-z0-9+/=\r\n]+$/.test(link) || /^[A-Za-z]:[\\/]/.test(link) || link.startsWith('.');
-if (looksLikePath) {
-  const certificatePath = path.resolve(link);
+const isCertificateUrl = /^https?:\/\//i.test(link);
+if (isCertificateUrl) {
+  let url;
   try {
-    await fsp.access(certificatePath);
+    url = new URL(link);
   } catch {
-    console.error(`The code-signing certificate was not found: ${certificatePath}`);
+    console.error(`The code-signing certificate URL is not valid: ${link}`);
     process.exit(1);
+  }
+  if (!/^https?:$/.test(url.protocol)) {
+    console.error(`The code-signing certificate URL must use http or https: ${link}`);
+    process.exit(1);
+  }
+} else {
+  const looksLikePath = !/^[A-Za-z0-9+/=\r\n]+$/.test(link) || /^[A-Za-z]:[\\/]/.test(link) || link.startsWith('.');
+  if (looksLikePath) {
+    const certificatePath = path.resolve(link);
+    try {
+      await fsp.access(certificatePath);
+    } catch {
+      console.error(`The code-signing certificate was not found: ${certificatePath}`);
+      process.exit(1);
+    }
   }
 }
 

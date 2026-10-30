@@ -108,6 +108,7 @@ try {
         ...process.env,
         MDM_USER_DATA_DIR: userData,
         MDM_DEV: '',
+        MDM_SMOKE: '1',
         VITE_DEV_SERVER_URL: ''
       },
       stdio: ['ignore', 'ignore', 'pipe']
@@ -129,6 +130,7 @@ try {
         ...process.env,
         MDM_USER_DATA_DIR: userData,
         MDM_DEV: '',
+        MDM_SMOKE: '1',
         VITE_DEV_SERVER_URL: ''
       }
     });

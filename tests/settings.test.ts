@@ -6,9 +6,11 @@ import { AppDatabase, type SecretBox } from '../src/main/database';
 import { SettingsService } from '../src/main/settings';
 
 const directories: string[] = [];
+const databases: AppDatabase[] = [];
 
 afterEach(async () => {
   vi.restoreAllMocks();
+  for (const db of databases.splice(0)) db.close();
   await Promise.all(directories.splice(0).map((directory) => fsp.rm(directory, { recursive: true, force: true })));
 });
 
@@ -44,5 +46,41 @@ describe('settings startup recovery', () => {
     } finally {
       db.close();
     }
+  });
+});
+
+describe('Turbo settings', () => {
+  const plainCipher: SecretBox = { encrypt: (value) => value, decrypt: (value) => value };
+
+  async function service() {
+    const directory = await fsp.mkdtemp(path.join(os.tmpdir(), 'mdm-turbo-settings-'));
+    directories.push(directory);
+    const db = new AppDatabase(path.join(directory, 'mdm.db'), plainCipher);
+    db.open();
+    databases.push(db);
+    const settings = new SettingsService(db, path.join(directory, 'downloads'));
+    settings.initialize();
+    return settings;
+  }
+
+  it('is off by default with a sensible ceiling', async () => {
+    const settings = await service();
+    expect(settings.get().turboMode).toBe(false);
+    expect(settings.get().turboMaxConnections).toBe(16);
+  });
+
+  it('keeps the ceiling within what the engine and servers can reasonably take', async () => {
+    const settings = await service();
+    settings.update({ patch: { turboMode: true, turboMaxConnections: 5000 } });
+    expect(settings.get().turboMode).toBe(true);
+    expect(settings.get().turboMaxConnections).toBe(64);
+    settings.update({ patch: { turboMaxConnections: 0 } });
+    expect(settings.get().turboMaxConnections).toBe(2);
+  });
+
+  it('treats anything other than true as off', async () => {
+    const settings = await service();
+    settings.update({ patch: { turboMode: 'yes' as unknown as boolean } });
+    expect(settings.get().turboMode).toBe(false);
   });
 });

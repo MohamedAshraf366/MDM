@@ -1,3 +1,4 @@
+import { spawnSync } from 'node:child_process';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -29,6 +30,18 @@ describe('yt-dlp cookie scoping', () => {
       includeSubdomains: true
     });
     expect(cookieDomainFor('co.uk')).toBeNull();
+  });
+
+  it('never widens a cookie to a country-code or private-hosting suffix', () => {
+    expect(cookieDomainFor('shop.example.com.eg')).toEqual({ domain: 'example.com.eg', includeSubdomains: true });
+    expect(cookieDomainFor('portal.example.gov.eg')).toEqual({ domain: 'example.gov.eg', includeSubdomains: true });
+    expect(cookieDomainFor('x.example.co.il')).toEqual({ domain: 'example.co.il', includeSubdomains: true });
+    expect(cookieDomainFor('x.example.com.sa')).toEqual({ domain: 'example.com.sa', includeSubdomains: true });
+    expect(cookieDomainFor('tenant.example.myshopify.com')).toEqual({
+      domain: 'example.myshopify.com',
+      includeSubdomains: true
+    });
+    for (const suffix of ['com.eg', 'gov.eg', 'co.il', 'com.sa']) expect(cookieDomainFor(suffix)).toBeNull();
   });
 
   it('keeps loopback and IP cookies host-only', () => {
@@ -75,6 +88,41 @@ describe('yt-dlp request files', () => {
       const cookieDirectory = path.dirname(request.args[index + 1]!);
       await request.cleanup();
       await expect(fsp.access(cookieDirectory)).rejects.toThrow();
+    }
+  });
+});
+
+describe('yt-dlp trust arguments', () => {
+  it('uses the real yt-dlp switch for the system store and points it at a private bundle', async () => {
+    const request = await prepareYtDlpRequest('https://www.example.com/v', {}, '');
+    try {
+      expect(request.args).not.toContain('--ca-bundle');
+      const index = request.args.indexOf('--compat-options');
+      expect(request.args[index + 1]).toBe('no-certifi');
+      const bundle = request.env.SSL_CERT_FILE;
+      expect(bundle).toBeTruthy();
+      expect(await fsp.readFile(bundle!, 'utf8')).toContain('BEGIN CERTIFICATE');
+    } finally {
+      await request.cleanup();
+    }
+  });
+
+  const ytDlp = spawnSync('yt-dlp', ['--version'], { encoding: 'utf8' });
+  it.skipIf(ytDlp.status !== 0)('only emits options the installed yt-dlp accepts', async () => {
+    const request = await prepareYtDlpRequest(
+      'https://www.example.com/v',
+      { 'User-Agent': 'UA', 'Accept-Language': 'en', Referer: 'https://www.example.com/' },
+      'sid=1'
+    );
+    try {
+      const run = spawnSync(
+        'yt-dlp',
+        ['--ignore-config', '--simulate', ...request.args, '--', 'https://mdm-test.invalid/x'],
+        { encoding: 'utf8', env: { ...process.env, ...request.env }, timeout: 60000 }
+      );
+      expect(`${run.stderr}${run.stdout}`).not.toMatch(/no such option|wrong OPTS/);
+    } finally {
+      await request.cleanup();
     }
   });
 });

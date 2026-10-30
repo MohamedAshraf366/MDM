@@ -1,6 +1,6 @@
 import http from 'node:http';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { BrowserBridge } from '../src/main/bridge';
+import { BrowserBridge, type BrowserPairingConfirmation } from '../src/main/bridge';
 import type { AppLogger } from '../src/main/logger';
 import type { DownloadManager } from '../src/main/manager';
 import { CHROMIUM_EXTENSION_ID, CHROMIUM_EXTENSION_ORIGIN } from '../src/shared/extension';
@@ -32,15 +32,18 @@ interface Harness {
   bridge: BrowserBridge;
   addDownload: ReturnType<typeof vi.fn>;
   confirmDownload: ReturnType<typeof vi.fn>;
+  confirmPairing: ReturnType<typeof vi.fn>;
   onQueued: ReturnType<typeof vi.fn>;
   setRule: (next: SiteRule | null) => void;
 }
 
 async function harness(
-  addDownloadImpl: () => Promise<AddDownloadResult> = async () => ({ id: 'download-1' } satisfies AddDownloadResult)
+  addDownloadImpl: () => Promise<AddDownloadResult> = async () => ({ id: 'download-1' } satisfies AddDownloadResult),
+  pairApprove: (confirmation: BrowserPairingConfirmation) => Promise<boolean> = async () => true
 ): Promise<Harness> {
   const addDownload = vi.fn(addDownloadImpl);
   const confirmDownload = vi.fn();
+  const confirmPairing = vi.fn(pairApprove);
   const onQueued = vi.fn();
   let activeRule: SiteRule | null = null;
   const manager = {
@@ -59,12 +62,12 @@ async function harness(
     warn: vi.fn(),
     error: vi.fn()
   } as unknown as AppLogger;
-  const bridge = new BrowserBridge(manager, logger, confirmDownload, onQueued);
+  const bridge = new BrowserBridge(manager, logger, confirmDownload, onQueued, confirmPairing);
   bridges.push(bridge);
   await bridge.apply({ enabled: true, port: 0, token: TOKEN });
   expect(bridge.listening).toBe(true);
   expect(bridge.port).toBeGreaterThan(0);
-  return { bridge, addDownload, confirmDownload, onQueued, setRule: (next) => (activeRule = next) };
+  return { bridge, addDownload, confirmDownload, confirmPairing, onQueued, setRule: (next) => (activeRule = next) };
 }
 
 interface BridgeResponse {
@@ -152,8 +155,8 @@ describe('browser bridge', () => {
     expect(localhost.status).toBe(200);
   });
 
-  it('hands the token only to the pinned extension', async () => {
-    const { bridge } = await harness();
+  it('hands the token only to the pinned extension after confirmation', async () => {
+    const { bridge, confirmPairing } = await harness();
     const denied = await request(bridge, '/pair');
     expect(denied.status).toBe(403);
 
@@ -221,6 +224,86 @@ describe('browser bridge', () => {
       data: { token: TOKEN }
     });
     expect(CHROMIUM_EXTENSION_ID).toMatch(/^[a-p]{32}$/);
+    expect(confirmPairing).toHaveBeenCalledTimes(2);
+    expect(confirmPairing).toHaveBeenNthCalledWith(1, { extensionId: CHROMIUM_EXTENSION_ID, origin: '' });
+    expect(confirmPairing).toHaveBeenNthCalledWith(2, {
+      extensionId: CHROMIUM_EXTENSION_ID,
+      origin: CHROMIUM_EXTENSION_ORIGIN
+    });
+  });
+
+  it('does not hand out the token when pairing is denied', async () => {
+    const { bridge, confirmPairing } = await harness(undefined, async () => false);
+    const denied = await request(bridge, '/pair', {
+      headers: {
+        'X-MDM-Extension': CHROMIUM_EXTENSION_ID,
+        'Sec-Fetch-Site': 'none',
+        'Sec-Fetch-Mode': 'cors',
+        'Sec-Fetch-Dest': 'empty'
+      }
+    });
+    expect(denied.status).toBe(403);
+    expect(JSON.parse(denied.body)).toMatchObject({
+      ok: false,
+      error: 'Pairing was declined in MDM.',
+      data: { declined: true }
+    });
+    expect(denied.body).not.toContain(TOKEN);
+    expect(confirmPairing).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects a concurrent prompt and asks again for the next pairing', async () => {
+    let approveFirst!: (approved: boolean) => void;
+    const { bridge, confirmPairing } = await harness(
+      undefined,
+      () =>
+        new Promise<boolean>((resolve) => {
+          approveFirst = resolve;
+        })
+    );
+    const headers = {
+      'X-MDM-Extension': CHROMIUM_EXTENSION_ID,
+      'Sec-Fetch-Site': 'none',
+      'Sec-Fetch-Mode': 'cors',
+      'Sec-Fetch-Dest': 'empty'
+    };
+    const first = request(bridge, '/pair', { headers });
+    await vi.waitFor(() => expect(confirmPairing).toHaveBeenCalledTimes(1));
+
+    const concurrent = await request(bridge, '/pair', { headers });
+    expect(concurrent.status).toBe(409);
+    expect(JSON.parse(concurrent.body).error).toMatch(/already waiting/i);
+    expect(confirmPairing).toHaveBeenCalledTimes(1);
+
+    approveFirst(true);
+    const firstResponse = await first;
+    expect(firstResponse.status).toBe(200);
+    expect(JSON.parse(firstResponse.body)).toMatchObject({ ok: true, data: { token: TOKEN } });
+
+    // The earlier approval is not cached: the next request needs a new prompt.
+    const later = request(bridge, '/pair', { headers });
+    await vi.waitFor(() => expect(confirmPairing).toHaveBeenCalledTimes(2));
+    approveFirst(true);
+    const laterResponse = await later;
+    expect(laterResponse.status).toBe(200);
+    expect(JSON.parse(laterResponse.body)).toMatchObject({ ok: true, data: { token: TOKEN } });
+  });
+
+  it('rate-limits pairing prompts separately from normal bridge traffic', async () => {
+    const { bridge, confirmPairing } = await harness();
+    const headers = { Origin: CHROMIUM_EXTENSION_ORIGIN };
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      const response = await request(bridge, '/pair', { headers });
+      expect(response.status).toBe(200);
+    }
+    const limited = await request(bridge, '/pair', { headers });
+    expect(limited.status).toBe(429);
+    expect(JSON.parse(limited.body).error).toMatch(/too many pairing attempts/i);
+    expect(confirmPairing).toHaveBeenCalledTimes(5);
+
+    // Normal traffic is unaffected by the pairing budget.
+    const health = await request(bridge, '/health', { token: TOKEN });
+    expect(health.status).toBe(200);
   });
 
   it('lists queues for the authenticated extension', async () => {

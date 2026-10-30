@@ -44,6 +44,13 @@ export interface ResumeState {
   mediaState?: string;
 }
 
+export interface TurboConfig {
+  /** Most parallel connections Turbo may use for one download. */
+  maxConnections: number;
+  /** Timing overrides (tests and benchmarks only). */
+  tuning?: Partial<import('./turbo').TurboTuning>;
+}
+
 export interface DownloadConfig {
   id: string;
   kind: DownloadKind;
@@ -55,6 +62,8 @@ export interface DownloadConfig {
   cookies: string;
   referrer: string;
   connections: number;
+  /** When set, the engine adds connections until throughput stops rising. */
+  turbo?: TurboConfig;
   speedLimitBps: number;
   maxRetries: number;
   retryBaseDelayMs: number;

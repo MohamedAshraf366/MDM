@@ -18,6 +18,10 @@ const MAX_BODY_BYTES = 64 * 1024;
 const REQUEST_TIMEOUT_MS = 15_000;
 const RATE_LIMIT_WINDOW_MS = 60_000;
 const RATE_LIMIT_MAX = 60;
+// Pairing opens a modal prompt, so it gets a much smaller budget than normal
+// bridge traffic. The limit is per bridge instance and per loopback peer.
+const PAIR_RATE_LIMIT_WINDOW_MS = 60_000;
+const PAIR_RATE_LIMIT_MAX = 5;
 
 interface BridgeSettings {
   enabled: boolean;
@@ -30,19 +34,29 @@ interface RateEntry {
   count: number;
 }
 
+export interface BrowserPairingConfirmation {
+  extensionId: string;
+  origin: string;
+}
+
+export type BrowserPairingHandler = (confirmation: BrowserPairingConfirmation) => Promise<boolean>;
+
 export class BrowserBridge {
   private server: http.Server | null = null;
   private settings: BridgeSettings = { enabled: false, port: 0, token: '' };
   private readonly rates = new Map<string, RateEntry>();
+  private readonly pairRates = new Map<string, RateEntry>();
   private readonly pendingDownloads = new Map<string, Promise<AddDownloadResult>>();
   private operation: Promise<void> = Promise.resolve();
+  private pairingPrompt = false;
   private lastError = '';
 
   constructor(
     private readonly manager: DownloadManager,
     private readonly logger: AppLogger,
     private readonly confirmDownload?: (confirmation: BrowserDownloadConfirmation) => void,
-    private readonly onQueued?: (result: { id: string; held: boolean }) => void
+    private readonly onQueued?: (result: { id: string; held: boolean }) => void,
+    private readonly confirmPairing?: BrowserPairingHandler
   ) {}
 
   get listening(): boolean {
@@ -228,6 +242,42 @@ export class BrowserBridge {
         this.json(response, 403, { ok: false, error: 'Only browser extensions can pair with the MDM bridge.' });
         return;
       }
+      if (!this.allowPairRequest(remote)) {
+        this.json(response, 429, { ok: false, error: 'Too many pairing attempts. Try again in a minute.' });
+        return;
+      }
+      if (!this.confirmPairing) {
+        this.json(response, 503, { ok: false, error: 'Pairing confirmation is unavailable.' });
+        return;
+      }
+      if (this.pairingPrompt) {
+        this.json(response, 409, {
+          ok: false,
+          error: 'Another pairing request is already waiting for confirmation in MDM.'
+        });
+        return;
+      }
+      const extensionId = pairingExtensionId(request, origin);
+      this.pairingPrompt = true;
+      let approved = false;
+      try {
+        this.logger.info('bridge', `Browser extension pairing requested (${extensionId}).`);
+        approved = await this.confirmPairing({ extensionId, origin: origin.toLowerCase() });
+      } catch (error) {
+        this.logger.error('bridge', `Pairing confirmation failed: ${(error as Error).message}`);
+      } finally {
+        this.pairingPrompt = false;
+      }
+      if (!approved) {
+        this.logger.info('bridge', 'Browser extension pairing was declined.');
+        this.json(response, 403, {
+          ok: false,
+          error: 'Pairing was declined in MDM.',
+          data: { declined: true }
+        });
+        return;
+      }
+      this.logger.info('bridge', 'Browser extension pairing was approved.');
       this.json(response, 200, {
         ok: true,
         data: { app: APP_NAME, version: APP_VERSION, token: this.settings.token }
@@ -366,17 +416,25 @@ export class BrowserBridge {
   }
 
   private allowRequest(remote: string): boolean {
+    return this.rate(this.rates, remote, RATE_LIMIT_MAX, RATE_LIMIT_WINDOW_MS);
+  }
+
+  private allowPairRequest(remote: string): boolean {
+    return this.rate(this.pairRates, remote, PAIR_RATE_LIMIT_MAX, PAIR_RATE_LIMIT_WINDOW_MS);
+  }
+
+  private rate(map: Map<string, RateEntry>, remote: string, max: number, windowMs: number): boolean {
     const now = Date.now();
-    const entry = this.rates.get(remote);
-    if (!entry || now - entry.startedAt >= RATE_LIMIT_WINDOW_MS) {
-      this.rates.set(remote, { startedAt: now, count: 1 });
-      if (this.rates.size > 500) {
-        for (const [key, value] of this.rates) if (now - value.startedAt >= RATE_LIMIT_WINDOW_MS) this.rates.delete(key);
+    const entry = map.get(remote);
+    if (!entry || now - entry.startedAt >= windowMs) {
+      map.set(remote, { startedAt: now, count: 1 });
+      if (map.size > 500) {
+        for (const [key, value] of map) if (now - value.startedAt >= windowMs) map.delete(key);
       }
       return true;
     }
     entry.count++;
-    return entry.count <= RATE_LIMIT_MAX;
+    return entry.count <= max;
   }
 
   private readJson(request: http.IncomingMessage): Promise<unknown> {
@@ -491,7 +549,8 @@ function parseBridgeRequest(value: unknown): BrowserBridgeRequest {
 }
 
 /**
- * Only the bundled extension may collect the bridge token.
+ * Only the bundled extension may ask to pair, and a person must approve every
+ * request in MDM.
  *
  * Chrome and Edge report `chrome-extension://<id>` as the Origin when they
  * attach one, and the browser enforces that header. Their extension service
@@ -499,6 +558,8 @@ function parseBridgeRequest(value: unknown): BrowserBridgeRequest {
  * carry `X-MDM-Extension: <id>` together with the Fetch Metadata of an
  * extension-initiated CORS request. A web page cannot produce that combination:
  * its Origin is always present and its Sec-Fetch-Site is cross-site/same-origin.
+ * Other extensions can copy the public ID, so the ID check alone only narrows
+ * the caller; the one-time confirmation prompt is what proves intent.
  *
  * Firefox reports a random `moz-extension://<uuid>` per profile and offers no
  * way to verify the add-on in this request, so Firefox users paste the token
@@ -512,6 +573,11 @@ function isBrowserExtensionPairRequest(request: http.IncomingMessage, origin: st
     request.headers['sec-fetch-mode'] === 'cors' &&
     request.headers['sec-fetch-dest'] === 'empty'
   );
+}
+
+function pairingExtensionId(request: http.IncomingMessage, origin: string): string {
+  if (origin) return origin.slice('chrome-extension://'.length).toLowerCase();
+  return String(request.headers['x-mdm-extension'] ?? '').toLowerCase();
 }
 
 function asStringRecord(value: unknown, name: string): Record<string, string> {

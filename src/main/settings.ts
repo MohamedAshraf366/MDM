@@ -164,6 +164,8 @@ export class SettingsService {
       'defaultConnections',
       'maxConcurrentDownloads',
       'maxConnectionsPerHost',
+      'turboMode',
+      'turboMaxConnections',
       'globalSpeedLimitBps',
       'defaultSpeedLimitBps',
       'connectTimeoutMs',
@@ -208,6 +210,8 @@ export class SettingsService {
     s.defaultConnections = clampInt(s.defaultConnections, 1, 32, 8);
     s.maxConcurrentDownloads = clampInt(s.maxConcurrentDownloads, 1, 20, 3);
     s.maxConnectionsPerHost = clampInt(s.maxConnectionsPerHost, 1, 64, 8);
+    s.turboMode = s.turboMode === true;
+    s.turboMaxConnections = clampInt(s.turboMaxConnections, 2, 64, 16);
     s.globalSpeedLimitBps = clampInt(s.globalSpeedLimitBps, 0, 10_000_000_000, 0);
     s.defaultSpeedLimitBps = clampInt(s.defaultSpeedLimitBps, 0, 10_000_000_000, 0);
     s.connectTimeoutMs = clampInt(s.connectTimeoutMs, 1000, 300_000, 20_000);

@@ -26,7 +26,7 @@
             <div class="section-heading">
               <div>
                 <h2>Desktop connection</h2>
-                <p class="card-subtitle">Chrome and Edge pair automatically and fill in the token. Firefox: paste the token shown in MDM. The port must match Browser integration.</p>
+                <p class="card-subtitle">Chrome and Edge ask MDM to pair; approve the one-time prompt in MDM and the token is filled in. Firefox: paste the token shown in MDM. The port must match Browser integration.</p>
               </div>
               <span class="status" id="connection-status">
                 <span class="status-dot"></span>
@@ -65,11 +65,11 @@
                     autocomplete="new-password"
                     spellcheck="false"
                     aria-label="Bridge token"
-                    placeholder="Added automatically when MDM is running"
+                    placeholder="Approve pairing in MDM to add this automatically"
                   />
                   <button type="button" class="btn" id="reveal-button">Show</button>
                 </div>
-                <small>Chrome and Edge add the token automatically. Firefox users paste the token from MDM.</small>
+                <small>Chrome and Edge ask MDM for the token after you approve the pairing prompt. Firefox users paste the token from MDM.</small>
               </div>
             </div>
 
@@ -134,8 +134,8 @@
               <li>
                 <span>2</span>
                 <div>
-                  <strong>Let it pair</strong>
-                  <p>Keep MDM running and use the same port. Chrome and Edge connect automatically; Firefox users paste the token from MDM.</p>
+                  <strong>Approve pairing</strong>
+                  <p>Keep MDM running and use the same port. Chrome and Edge ask MDM for the token; approve the prompt in MDM. Firefox users paste the token from MDM.</p>
                 </div>
               </li>
               <li>

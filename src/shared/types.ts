@@ -165,6 +165,10 @@ export interface AppSettings {
   defaultConnections: number;
   maxConcurrentDownloads: number;
   maxConnectionsPerHost: number;
+  /** Add connections during a download until throughput stops rising. */
+  turboMode: boolean;
+  /** Most connections Turbo may use for one download. */
+  turboMaxConnections: number;
   globalSpeedLimitBps: number;
   defaultSpeedLimitBps: number;
   connectTimeoutMs: number;

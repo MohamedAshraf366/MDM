@@ -164,7 +164,7 @@ async function probeWithYtDlp(
       return await runYtDlp({
         binary,
         args: buildArgs(extra, request.args),
-        env: toolEnvironment(runtime),
+        env: { ...toolEnvironment(runtime), ...request.env },
         timeoutMs: PROBE_TIMEOUT_MS,
         idleTimeoutMs: PROBE_IDLE_TIMEOUT_MS,
         collectStdout: true,
@@ -744,7 +744,7 @@ export class YtDlpDownloadTask {
         return await runYtDlp({
           binary,
           args: buildArgs(infoJsonPath, request.args, extra),
-          env: toolEnvironment(this.runtime),
+          env: { ...toolEnvironment(this.runtime), ...request.env },
           idleTimeoutMs: DOWNLOAD_IDLE_TIMEOUT_MS,
           onSpawn: (child) => {
             this.child = child;

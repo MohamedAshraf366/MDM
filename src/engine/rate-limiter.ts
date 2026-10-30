@@ -146,23 +146,47 @@ export class Semaphore {
 
 export class HostLimiter {
   private readonly hosts = new Map<string, Semaphore>();
+  private readonly boosts = new Set<{ limit: number }>();
   private limit: number;
 
   constructor(limit = 8) {
     this.limit = Math.max(1, limit);
   }
 
+  private effectiveLimit(): number {
+    let effective = this.limit;
+    for (const boost of this.boosts) effective = Math.max(effective, boost.limit);
+    return effective;
+  }
+
+  private applyLimit(): void {
+    const effective = this.effectiveLimit();
+    for (const semaphore of this.hosts.values()) semaphore.setMax(effective);
+  }
+
   setLimit(limit: number): void {
     this.limit = Math.max(1, limit);
-    for (const semaphore of this.hosts.values()) {
-      semaphore.setMax(this.limit);
-    }
+    this.applyLimit();
+  }
+
+  /**
+   * Temporarily lifts the per-host cap to at least `limit` (Turbo downloads).
+   * Call the returned function to hand the cap back; it is safe to call twice.
+   */
+  boost(limit: number): () => void {
+    const lease = { limit: Math.max(1, Math.floor(limit)) };
+    this.boosts.add(lease);
+    this.applyLimit();
+    return () => {
+      if (!this.boosts.delete(lease)) return;
+      this.applyLimit();
+    };
   }
 
   acquire(host: string, signal?: AbortSignal): Promise<() => void> {
     let semaphore = this.hosts.get(host);
     if (!semaphore) {
-      semaphore = new Semaphore(this.limit);
+      semaphore = new Semaphore(this.effectiveLimit());
       this.hosts.set(host, semaphore);
     }
     return semaphore.acquire(signal);

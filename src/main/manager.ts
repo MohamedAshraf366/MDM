@@ -1445,6 +1445,11 @@ export class DownloadManager extends EventEmitter {
       cookies: record.cookies,
       referrer: record.referrer,
       connections: record.connections,
+      // Turbo only makes sense when nothing caps the speed: a limit means "use less".
+      turbo:
+        settings.turboMode && !speedLimit && !settings.globalSpeedLimitBps
+          ? { maxConnections: Math.max(settings.turboMaxConnections, record.connections) }
+          : undefined,
       speedLimitBps: speedLimit,
       maxRetries: record.maxRetries || settings.maxRetries,
       retryBaseDelayMs: settings.retryBaseDelayMs,

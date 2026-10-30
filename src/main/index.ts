@@ -25,7 +25,7 @@ import { AppLogger } from './logger';
 import { DownloadManager, type ManagerHost } from './manager';
 import { systemExecutable } from '../engine/win-tools';
 import { SchedulerService } from './scheduler';
-import { BrowserBridge } from './bridge';
+import { BrowserBridge, type BrowserPairingConfirmation } from './bridge';
 import { registerIpc, performSystemShutdown } from './ipc';
 import { migrateLegacyProfile } from './migration';
 import {
@@ -179,7 +179,8 @@ async function bootstrap(): Promise<void> {
       showMainWindow();
       send(BROWSER_DOWNLOAD_EVENT, confirmation);
     },
-    (result) => showMainWindow('downloads', result.id)
+    (result) => showMainWindow('downloads', result.id),
+    confirmExtensionPairing
   );
   applyBridgeSettings(settings.get());
   scheduler.start();
@@ -634,6 +635,40 @@ function showMainWindow(route = 'downloads', downloadId?: string): void {
   mainWindow.focus();
   send(NAVIGATE_EVENT, route);
   deliverPendingFocus();
+}
+
+/**
+ * Every `/pair` request needs a fresh decision. Approval is deliberately not
+ * cached: an extension can be uninstalled and its public ID reused, so the
+ * person in front of MDM must confirm the connection each time.
+ */
+async function confirmExtensionPairing(confirmation: BrowserPairingConfirmation): Promise<boolean> {
+  if (process.env.MDM_SMOKE === '1') {
+    logger?.warn('bridge', 'Pairing was approved automatically because MDM_SMOKE=1.');
+    return true;
+  }
+  showMainWindow('browser');
+  const options = {
+    type: 'question' as const,
+    title: 'Allow browser extension pairing?',
+    message: `Allow this Chrome/Edge extension to connect to ${APP_SHORT_NAME}?`,
+    detail:
+      `Extension ID: ${confirmation.extensionId}\n\n` +
+      'Only approve this if you just opened the MDM extension settings or chose Test connection in the extension. ' +
+      'MDM shares its bridge token with this extension for this pairing only.',
+    buttons: ['Allow pairing', 'Deny'],
+    defaultId: 1,
+    cancelId: 1,
+    noLink: true
+  };
+  try {
+    const parent = mainWindow && !mainWindow.isDestroyed() ? mainWindow : null;
+    const result = parent ? await dialog.showMessageBox(parent, options) : await dialog.showMessageBox(options);
+    return result.response === 0;
+  } catch (error) {
+    logger?.warn('bridge', `Could not show the pairing prompt: ${(error as Error).message}`);
+    return false;
+  }
 }
 
 async function addUrl(url: string): Promise<void> {
