@@ -8,7 +8,7 @@ $root = Split-Path -Parent $PSScriptRoot
 if (-not $Version) {
   $Version = (Get-Content -LiteralPath (Join-Path $root "package.json") -Raw | ConvertFrom-Json).version
 }
-# The website and release artifacts use the short form (2.4), while package.json needs full semver (2.4.0).
+# The website and release artifacts use the short form (2.6), while package.json needs full semver (2.6.0).
 if ($Version -match '\.0$') {
   $Version = $Version -replace '\.0$', ''
 }

@@ -277,7 +277,13 @@
 
   !macro customFinishPage
     Page custom MdmBrowserPageCreate MdmBrowserPageLeave
-    Function MdmBrowserFinishShow
+    Function StartApp
+      ${If} ${isUpdated}
+        StrCpy $1 "--updated"
+      ${Else}
+        StrCpy $1 ""
+      ${EndIf}
+      ${StdUtils.ExecShellAsUser} $0 "$launchLink" "open" "$1"
       ${If} $MdmBrowserPath != ""
         nsExec::ExecToStack 'cmd.exe /C type "$PLUGINSDIR\mdm-extension-path.txt"|"$SYSDIR\clip.exe"'
         Pop $0
@@ -287,18 +293,9 @@
         StrCpy $MdmBrowserPath ""
       ${EndIf}
     FunctionEnd
-    Function StartApp
-      ${If} ${isUpdated}
-        StrCpy $1 "--updated"
-      ${Else}
-        StrCpy $1 ""
-      ${EndIf}
-      ${StdUtils.ExecShellAsUser} $0 "$launchLink" "open" "$1"
-    FunctionEnd
-    !define MUI_FINISHPAGE_TEXT "MDM is installed.$\r$\n$\r$\nThe browser setup page and resources folder should now be open. The extension path is on your clipboard. Follow the numbered steps from the previous page: enable Developer mode, choose Load unpacked, paste the path, then pin and open MDM. Pairing is automatic.$\r$\nA setup guide is saved as 'Browser extension setup.txt' in the MDM installation folder."
+    !define MUI_FINISHPAGE_TEXT "MDM is installed.$\r$\n$\r$\nClick Finish to launch MDM and open the browser extension setup. The extension path is on your clipboard. Follow the numbered steps from the previous page: enable Developer mode, choose Load unpacked, paste the path, then pin and open MDM. Pairing is automatic.$\r$\nA setup guide is saved as 'Browser extension setup.txt' in the MDM installation folder."
     !define MUI_FINISHPAGE_RUN
     !define MUI_FINISHPAGE_RUN_FUNCTION "StartApp"
-    !define MUI_PAGE_CUSTOMFUNCTION_SHOW MdmBrowserFinishShow
     !insertmacro MUI_PAGE_FINISH
   !macroend
 !endif

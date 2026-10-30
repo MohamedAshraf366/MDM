@@ -146,7 +146,7 @@ try {
 
   const appInfo = await window.evaluate(async () => window.mdm.getAppInfo());
   assert.equal(appInfo.ok, true, 'getAppInfo failed');
-  assert.equal(appInfo.data.version, '2.4');
+  assert.equal(appInfo.data.version, '2.6');
   assert.equal(appInfo.data.ytDlpAvailable, true, 'bundled yt-dlp not resolved');
   assert.equal(appInfo.data.ffmpegAvailable, true, 'bundled ffmpeg not resolved');
   await fsp.access(appInfo.data.extensionPath);

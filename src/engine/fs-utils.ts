@@ -155,13 +155,14 @@ export function reservedPathsExcept(
 export async function resolveTargetPath(
   directory: string,
   fileName: string,
-  policy: 'rename' | 'overwrite' | 'skip',
+  policy: 'rename' | 'overwrite' | 'skip' | 'allow',
   reservedPaths: Set<string> = new Set()
 ): Promise<string> {
   const desired = resolveInside(directory, fileName);
   const exists = await fileExists(desired);
   const reserved = Array.from(reservedPaths).some((p) => p.toLowerCase() === desired.toLowerCase());
   if (policy === 'overwrite') return desired;
+  if (policy === 'allow') return desired;
   if (policy === 'skip' && (exists || reserved)) {
     throw new DownloadError('A file with this name already exists.', 'FILE_EXISTS');
   }

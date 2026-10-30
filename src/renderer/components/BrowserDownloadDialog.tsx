@@ -7,6 +7,8 @@ export function BrowserDownloadDialog() {
   const { browserDownload, closeBrowserDownload, appInfo, focusDownload, navigate, notify } = useApp();
   const [destination, setDestination] = useState('');
   const [tlsAllowInsecure, setTlsAllowInsecure] = useState(false);
+  const [turboMode, setTurboMode] = useState(true);
+  const [connections, setConnections] = useState(16);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
@@ -14,6 +16,8 @@ export function BrowserDownloadDialog() {
     if (!browserDownload) return;
     setDestination(browserDownload.destinationDir);
     setTlsAllowInsecure(false);
+    setTurboMode(true);
+    setConnections(16);
     setSaving(false);
     setError('');
   }, [browserDownload]);
@@ -46,6 +50,8 @@ export function BrowserDownloadDialog() {
         mediaFormatId: request.mediaFormatId,
         mediaEngine: request.mediaEngine,
         tlsAllowInsecure,
+        turboMode,
+        connections,
         destinationDir: destination.trim() || undefined,
         startNow: true
       });
@@ -114,6 +120,28 @@ export function BrowserDownloadDialog() {
             <p>Only for servers whose certificate the browser accepts but MDM cannot verify (missing chain, self-signed).</p>
           </div>
           <Toggle checked={tlsAllowInsecure} onChange={setTlsAllowInsecure} label="Allow invalid TLS certificates" />
+        </div>
+        <div className="setting-row">
+          <div>
+            <strong>Turbo mode</strong>
+            <p>Automatically grow connections until speed stops rising. Default ON.</p>
+          </div>
+          <Toggle checked={turboMode} onChange={setTurboMode} label="Turbo mode" />
+        </div>
+        <div className="setting-row">
+          <div>
+            <strong>Most connections</strong>
+            <p>2–64. More connections can use more bandwidth on multi-segment servers.</p>
+          </div>
+          <div style={{ width: 120 }}>
+            <TextInput
+              type="number"
+              min={2}
+              max={64}
+              value={String(connections)}
+              onChange={(event) => setConnections(Math.max(2, Math.min(64, Number(event.target.value) || 16)))}
+            />
+          </div>
         </div>
         {error ? <InlineNote tone="danger">{error}</InlineNote> : null}
       </div>

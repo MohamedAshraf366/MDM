@@ -15,10 +15,10 @@ export const DEFAULT_SETTINGS: AppSettings = {
   defaultDownloadDir: '',
   categoryFolders: { ...DEFAULT_CATEGORY_FOLDERS },
   categorizeByType: true,
-  defaultConnections: 8,
+  defaultConnections: 16,
   maxConcurrentDownloads: 3,
   maxConnectionsPerHost: 8,
-  turboMode: false,
+  turboMode: true,
   turboMaxConnections: 16,
   globalSpeedLimitBps: 0,
   defaultSpeedLimitBps: 0,
@@ -126,7 +126,7 @@ export const DEFAULT_RULES: Array<Omit<CategoryRule, 'id' | 'createdAt' | 'updat
 
 export const APP_NAME = 'MDM - Mohamed Download Manager';
 export const APP_SHORT_NAME = 'MDM';
-export const APP_VERSION = '2.4';
+export const APP_VERSION = '2.6';
 export const BRIDGE_DEFAULT_PORT = 41731;
 export const MAX_REDIRECTS = 10;
 /** Small files finish faster over one warm connection than several cold ones. */

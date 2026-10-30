@@ -54,7 +54,7 @@ win:
     rfc3161TimeStampServer: https://timestamp.digicert.com
 
 nsis:
-  artifactName: MDM-Setup-2.4.${ext}
+  artifactName: MDM-Setup-2.6.${ext}
   oneClick: false
   perMachine: false
   allowElevation: true

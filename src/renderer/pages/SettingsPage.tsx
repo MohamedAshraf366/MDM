@@ -433,6 +433,7 @@ export function SettingsPage() {
                 <option value="rename">Rename the new file</option>
                 <option value="overwrite">Overwrite the existing file</option>
                 <option value="skip">Skip the download</option>
+                <option value="allow">Allow multiple downloads of the same file</option>
               </Select>
             </div>
           </Card>
@@ -711,7 +712,7 @@ export function SettingsPage() {
             <div className="about-grid">
               <div>
                 <span>Version</span>
-                <strong>{appInfo?.version ?? '2.4'}</strong>
+                <strong>{appInfo?.version ?? '2.6'}</strong>
               </div>
               <div>
                 <span>Platform</span>

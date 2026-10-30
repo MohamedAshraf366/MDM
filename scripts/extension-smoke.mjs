@@ -81,7 +81,7 @@ async function startBridge() {
         send(403, { ok: false, error: 'Extension origin required.' });
         return;
       }
-      send(200, { ok: true, data: { app: 'MDM', version: '2.4', token: bridgeToken } });
+      send(200, { ok: true, data: { app: 'MDM', version: '2.6', token: bridgeToken } });
       return;
     }
     if (request.headers.authorization !== `Bearer ${bridgeToken}`) {
@@ -93,7 +93,7 @@ async function startBridge() {
     request.on('end', () => {
       const body = chunks.length ? JSON.parse(Buffer.concat(chunks).toString('utf8')) : {};
       if (request.url === '/health') {
-        send(200, { ok: true, data: { app: 'MDM', version: '2.4' } });
+        send(200, { ok: true, data: { app: 'MDM', version: '2.6' } });
         return;
       }
       if (request.url === '/probe') {

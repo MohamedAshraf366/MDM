@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "MDM Download Bridge",
-  "version": "2.4",
+  "version": "2.6",
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAqFOZKatkviaqGGCS4tsQBHAoSHNB5ggDEcK7RbLCiWDPDPWWfuqnQ3jSuu4o/G8aG94Phbifrk1mtTfy1AUDeea9oM5ozp6fTJV/5/Z2+ew8yk9NDS6OPcLkPTbTshgFDrLET8vNY7Yq4d77UAPaw0wrNOT6C7njhdENcpuJhkpkRgsG0RPchG9xYJMEWGCmK13barC0ABa+AUuzTb5dnNsFb2aLKsF0f4QZ6/6Ap2SbZLZdvMHDnixktU/Piwa+6hECqmscgZY6G/eI/iJe3Uh3FKW7OM8oWmnD5aq3Jh8wPzh/++3eG6RjrncfeJQ0fkwzx++7L04D81rXizqz4QIDAQAB",
   "description": "Send downloads from your browser to MDM - Mohamed Download Manager through its authenticated local bridge.",
   "minimum_chrome_version": "116",

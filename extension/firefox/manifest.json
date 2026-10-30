@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "MDM Download Bridge",
-  "version": "2.4",
+  "version": "2.6",
   "description": "Send downloads from your browser to MDM - Mohamed Download Manager through its authenticated local bridge.",
   "browser_specific_settings": {
     "gecko": {

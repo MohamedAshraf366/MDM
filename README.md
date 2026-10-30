@@ -8,7 +8,7 @@
 
 A fast, local-first download manager for Windows 10 and 11 — segmented transfers, browser capture, queues, schedules, site rules, and HLS/DASH/YouTube media downloads in one desktop app.
 
-[![Download for Windows](https://img.shields.io/badge/Download%20for%20Windows-MDM%202.4-3AE2C8?style=for-the-badge&logo=windows&logoColor=white)](https://mdm-download-manager-mohamed-ashraf.vercel.app/)
+[![Download for Windows](https://img.shields.io/badge/Download%20for%20Windows-MDM%202.6-3AE2C8?style=for-the-badge&logo=windows&logoColor=white)](https://mdm-download-manager-mohamed-ashraf.vercel.app/)
 [![License](https://img.shields.io/badge/License-MIT-22c55e?style=for-the-badge)](LICENSE)
 [![Platform](https://img.shields.io/badge/Platform-Windows%2010%20%7C%2011-0078D4?style=for-the-badge&logo=windows&logoColor=white)](#requirements)
 
@@ -28,24 +28,24 @@ A fast, local-first download manager for Windows 10 and 11 — segmented transfe
 
 The latest stable Windows build is available from the official website:
 
-### [Download MDM 2.4 for Windows →](https://mdm-download-manager-mohamed-ashraf.vercel.app/)
+### [Download MDM 2.6 for Windows →](https://mdm-download-manager-mohamed-ashraf.vercel.app/)
 
 Source code: [github.com/MohamedAshraf366/MDM-DowloadManager](https://github.com/MohamedAshraf366/MDM-DowloadManager)
 
 | | |
 |---|---|
-| **Version** | 2.4.0 |
+| **Version** | 2.6.0 |
 | **Platform** | Windows 10 / 11 (x64) |
-| **Installer** | `MDM-Setup-2.4.exe` (215 MB) |
-| **SHA-256** | `196A18B7EBDBA437AA16FB97238A45DC4475AFC71D29ECFD384ECB587D2811DE` |
+| **Installer** | `MDM-Setup-2.6.exe` (225,775,600 bytes, 215 MiB) |
+| **SHA-256** | `BE23EDA4482F20812CC658EFD16880ECC447AD5167DC38156941B752B768F81E` |
 | **Browser add-ons** | Chrome / Edge and Firefox packages are available on the download page. |
 
-The SHA-256 above is the hash published on the download page for the 2.4 installer. Rebuilding locally produces a new binary, so compare the downloaded file against the hash shown on the official page.
+The SHA-256 above is for the 2.6 installer built from this checkout. Rebuilding locally produces a new binary, so compare the downloaded file against the hash shown on the official page.
 
 Verify the installer before running it:
 
 ```powershell
-Get-FileHash .\MDM-Setup-2.4.exe -Algorithm SHA256
+Get-FileHash .\MDM-Setup-2.6.exe -Algorithm SHA256
 ```
 
 The installer is an NSIS package. It creates Start Menu and desktop shortcuts, allows choosing the install directory, and keeps your database when uninstalling by default.
@@ -168,7 +168,7 @@ npm run verify
 npm run package
 ```
 
-The installer is written to `release/MDM-Setup-2.4.exe`. Builds are not produced by CI because packaging requires Windows and the bundled tools. Attach the installer to a GitHub Release instead of committing it.
+The installer is written to `release/MDM-Setup-2.6.exe`. Builds are not produced by CI because packaging requires Windows and the bundled tools. Attach the installer to a GitHub Release instead of committing it.
 
 ### Code signing
 
@@ -183,7 +183,7 @@ npm run package:signed
 `package:signed` refuses to start without `CSC_LINK` or `WIN_CSC_LINK`, or when a local certificate path does not exist. An `http://` or `https://` certificate URL is passed through to electron-builder. It enables electron-builder's `forceCodeSigning`, signs with SHA-256, and uses the DigiCert RFC 3161 timestamp service so signatures remain valid after the certificate expires. Confirm the result before publishing:
 
 ```powershell
-Get-AuthenticodeSignature .\release\MDM-Setup-2.4.exe | Format-List Status, SignerCertificate
+Get-AuthenticodeSignature .\release\MDM-Setup-2.6.exe | Format-List Status, SignerCertificate
 ```
 
 Unsigned builds trigger Windows SmartScreen and should only be used for local testing.
@@ -329,7 +329,7 @@ The bundled tools total about 339 MB, so keep an eye on your Git LFS storage and
 ### What is not committed
 
 - `release/`, `dist/`, `node_modules/`, coverage, and test reports are ignored.
-- `release/MDM-Setup-2.4.exe` (~215 MB) is attached to a GitHub Release, never committed.
+- `release/MDM-Setup-2.6.exe` (225,775,600 bytes) is attached to a GitHub Release, never committed.
 - The optional `website/` marketing-site source is not included. The live site is built and hosted separately, so a fresh Vercel or GitHub Pages deployment from this checkout will not rebuild it until that folder is restored.
 
 ### Pushing updates
@@ -349,7 +349,7 @@ npm run verify
 npm run package
 ```
 
-Attach `release/MDM-Setup-2.4.exe` to a GitHub Release. Do not commit it. GitHub Actions does not build the Windows installer because packaging needs Windows and the bundled tools.
+Attach `release/MDM-Setup-2.6.exe` to a GitHub Release. Do not commit it. GitHub Actions does not build the Windows installer because packaging needs Windows and the bundled tools.
 
 ### Suggested repository metadata
 
@@ -369,7 +369,7 @@ The README is the public project description: it covers what MDM is, its feature
 - [ ] Run `git lfs install` once per machine and confirm `git lfs track` lists `tools/*.exe`. LFS is required because `ffmpeg.exe` and `ffprobe.exe` exceed GitHub's 100 MB per-file limit.
 - [ ] Run `npm run verify` (typecheck, lint, tests, and production build). It passes on this checkout: **155 tests**.
 - [ ] Confirm `release/`, `dist/`, and `node_modules/` are not staged.
-- [ ] Attach `release/MDM-Setup-2.4.exe` (225,775,660 bytes, SHA-256 `1EAC4344…F6E7B3`) to a GitHub Release instead of committing it.
+- [ ] Attach `release/MDM-Setup-2.6.exe` (225,775,600 bytes, SHA-256 `BE23EDA4…B768F81E`) to a GitHub Release instead of committing it.
 - [ ] Keep the Vercel download page linked. This checkout does not contain the `website/` source needed to rebuild it, so connect Vercel only after restoring that folder.
 
 ## License

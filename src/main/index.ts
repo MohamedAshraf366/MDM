@@ -604,7 +604,7 @@ function isWindowVisible(): boolean {
 function showNotification(title: string, body: string, downloadId?: string): void {
   if (!Notification.isSupported()) return;
   if (!settingsService?.get().nativeNotificationsWhenActive && windowIsActive()) return;
-  const icon = loadAssetImage('icon.png');
+  const icon = loadAssetImage('icon.ico');
   const notification = new Notification({
     title,
     body,

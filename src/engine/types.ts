@@ -69,7 +69,7 @@ export interface DownloadConfig {
   retryBaseDelayMs: number;
   checksum: string;
   checksumAlgorithm: ChecksumAlgorithm | '';
-  conflictPolicy: 'rename' | 'overwrite' | 'skip';
+  conflictPolicy: 'rename' | 'overwrite' | 'skip' | 'allow';
   tlsAllowInsecure: boolean;
   resume?: ResumeState;
   mediaFormat?: MediaFormat;

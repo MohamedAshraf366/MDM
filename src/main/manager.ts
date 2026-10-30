@@ -240,6 +240,7 @@ export class DownloadManager extends EventEmitter {
     if (!request || typeof request.url !== 'string' || !isReasonableUrlLength(request.url)) {
       throw new Error('A valid URL is required.');
     }
+    const settings = this.settingsService.get();
     let normalized = request.url.trim();
     if (!allowedUrl(normalized)) throw new Error('Only http, https, and ftp URLs are supported.');
     const headers = sanitizeHeaders(request.headers);
@@ -249,7 +250,7 @@ export class DownloadManager extends EventEmitter {
       if (!headers.Authorization && !headers.authorization) headers.Authorization = credentials.authorization;
     }
     const duplicate = this.db.findActiveByUrl(normalized);
-    if (duplicate) {
+    if (duplicate && settings.duplicatePolicy !== 'allow') {
       return { id: duplicate.id, duplicateOf: duplicate.id };
     }
 
@@ -321,7 +322,6 @@ export class DownloadManager extends EventEmitter {
       if (ext) fileName = `${fileName}.${ext}`;
     }
     const category = categoryFromFileName(fileName);
-    const settings = this.settingsService.get();
     let destinationDir: string;
     let destinationExplicit = false;
     if (request.destinationDir) {
@@ -336,7 +336,7 @@ export class DownloadManager extends EventEmitter {
     const queues = this.db.listQueues();
     const queueId = request.queueId && queues.some((queue) => queue.id === request.queueId) ? request.queueId : 'default';
     const now = new Date().toISOString();
-    const connections = clampInt(settings.defaultConnections, 1, 32);
+    const connections = clampInt(request.connections ?? settings.defaultConnections, 1, 32);
     const speedLimit = clampInt(request.speedLimitBps ?? (request.speedLimitBps === 0 ? 0 : settings.defaultSpeedLimitBps), 0, 10_000_000_000);
     const checksumAlgorithm: ChecksumAlgorithm | '' = request.checksumAlgorithm ?? settings.checksumAlgorithm;
     const checksum = (request.checksum ?? '').trim();
@@ -369,6 +369,7 @@ export class DownloadManager extends EventEmitter {
       downloadedBytes: 0,
       resumable: true,
       connections,
+      turboMode: request.turboMode ?? settings.turboMode,
       speedLimitBps: speedLimit,
       headers,
       cookies: sanitizeCookies(request.cookies ?? ''),
@@ -1447,7 +1448,7 @@ export class DownloadManager extends EventEmitter {
       connections: record.connections,
       // Turbo only makes sense when nothing caps the speed: a limit means "use less".
       turbo:
-        settings.turboMode && !speedLimit && !settings.globalSpeedLimitBps
+        (record.turboMode ?? settings.turboMode) && !speedLimit && !settings.globalSpeedLimitBps
           ? { maxConnections: Math.max(settings.turboMaxConnections, record.connections) }
           : undefined,
       speedLimitBps: speedLimit,

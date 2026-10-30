@@ -53,6 +53,7 @@ export interface DownloadRecord {
   downloadedBytes: number;
   resumable: boolean;
   connections: number;
+  turboMode?: boolean;
   speedLimitBps: number;
   headers: Record<string, string>;
   cookies: string;
@@ -176,7 +177,7 @@ export interface AppSettings {
   maxRetries: number;
   retryBaseDelayMs: number;
   maxRedirects: number;
-  duplicatePolicy: 'rename' | 'overwrite' | 'skip';
+  duplicatePolicy: 'rename' | 'overwrite' | 'skip' | 'allow';
   autoOpenCompleted: boolean;
   autoResumeOnStartup: boolean;
   launchAtStartup: boolean;
@@ -260,6 +261,8 @@ export interface AddDownloadRequest {
   mediaEngine?: 'yt-dlp';
   tlsAllowInsecure?: boolean;
   autoOpen?: boolean;
+  turboMode?: boolean;
+  connections?: number;
   overrides?: {
     fileName?: string;
     mimeType?: string;

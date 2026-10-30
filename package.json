@@ -1,6 +1,6 @@
 {
   "name": "mdm-download-manager",
-  "version": "2.4.0",
+  "version": "2.6.0",
   "description": "MDM - Mohamed Download Manager, a modern, original download manager for Windows",
   "main": "dist/main/main/index.js",
   "author": "MDM Contributors",

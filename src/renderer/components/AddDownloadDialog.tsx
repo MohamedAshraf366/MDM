@@ -32,6 +32,7 @@ export function AddDownloadDialog() {
   const [cookies, setCookies] = useState('');
   const [advanced, setAdvanced] = useState(false);
   const [tlsAllowInsecure, setTlsAllowInsecure] = useState(false);
+  const [turboMode, setTurboMode] = useState(true);
   const [probe, setProbe] = useState<MediaProbeResult | null>(null);
   const [selectedFormatId, setSelectedFormatId] = useState('');
   const [probing, setProbing] = useState(false);
@@ -64,6 +65,7 @@ export function AddDownloadDialog() {
     setCookies('');
     setAdvanced(false);
     setTlsAllowInsecure(false);
+    setTurboMode(settings?.turboMode ?? true);
     setProbe(null);
     setSelectedFormatId('');
     setProbing(false);
@@ -151,6 +153,7 @@ export function AddDownloadDialog() {
         startNow: startMode !== 'paused',
         scheduledAt: scheduledIso,
         autoOpen,
+        turboMode,
         referrer: referrer.trim(),
         sourcePageUrl: sourcePageUrl.trim(),
         cookies,
@@ -421,6 +424,15 @@ export function AddDownloadDialog() {
                 </p>
               </div>
               <Toggle checked={tlsAllowInsecure} onChange={setTlsAllowInsecure} label="Allow invalid TLS certificates" />
+            </div>
+            <div className="setting-row">
+              <div>
+                <strong>Turbo mode</strong>
+                <p>
+                  Automatically increase connections during download until throughput stops rising. Default: ON.
+                </p>
+              </div>
+              <Toggle checked={turboMode} onChange={setTurboMode} label="Turbo mode" />
             </div>
           </div>
         ) : null}
