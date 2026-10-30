@@ -126,7 +126,7 @@ describe('Turbo on a simulated connection', () => {
     expect(result.holes).toBe(false);
     expect(link.stats.rejected).toBeGreaterThan(0);
     expect(link.stats.maxConcurrent).toBeLessThanOrEqual(8);
-    expect(result.logs.some((line) => /limited parallel connections/.test(line))).toBe(true);
+    expect(result.logs.some((line) => /pushed back on the extra connections/.test(line))).toBe(true);
   }, 120_000);
 
   it('is off unless asked for', async () => {

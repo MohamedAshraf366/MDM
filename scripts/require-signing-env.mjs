@@ -16,7 +16,7 @@ if (!link) {
   process.exit(1);
 }
 
-const isCertificateUrl = /^https?:\/\//i.test(link);
+const isCertificateUrl = /^[a-z][a-z0-9+.-]*:\/\//i.test(link);
 if (isCertificateUrl) {
   let url;
   try {
@@ -25,8 +25,9 @@ if (isCertificateUrl) {
     console.error(`The code-signing certificate URL is not valid: ${link}`);
     process.exit(1);
   }
-  if (!/^https?:$/.test(url.protocol)) {
-    console.error(`The code-signing certificate URL must use http or https: ${link}`);
+  // A certificate fetched over plain http could be swapped on the way.
+  if (url.protocol !== 'https:') {
+    console.error(`The code-signing certificate URL must use https: ${link}`);
     process.exit(1);
   }
 } else {

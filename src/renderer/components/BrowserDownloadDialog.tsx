@@ -9,6 +9,7 @@ export function BrowserDownloadDialog() {
   const [tlsAllowInsecure, setTlsAllowInsecure] = useState(false);
   const [turboMode, setTurboMode] = useState(true);
   const [connections, setConnections] = useState(16);
+  const [repeatCount, setRepeatCount] = useState(1);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
@@ -18,6 +19,7 @@ export function BrowserDownloadDialog() {
     setTlsAllowInsecure(false);
     setTurboMode(true);
     setConnections(16);
+    setRepeatCount(1);
     setSaving(false);
     setError('');
   }, [browserDownload]);
@@ -52,6 +54,7 @@ export function BrowserDownloadDialog() {
         tlsAllowInsecure,
         turboMode,
         connections,
+        repeatCount,
         destinationDir: destination.trim() || undefined,
         startNow: true
       });
@@ -140,6 +143,21 @@ export function BrowserDownloadDialog() {
               max={64}
               value={String(connections)}
               onChange={(event) => setConnections(Math.max(2, Math.min(64, Number(event.target.value) || 16)))}
+            />
+          </div>
+        </div>
+        <div className="setting-row">
+          <div>
+            <strong>Repeat download count</strong>
+            <p>Download this file N times in sequence. 1 = once.</p>
+          </div>
+          <div style={{ width: 80 }}>
+            <TextInput
+              type="number"
+              min={1}
+              max={50}
+              value={String(repeatCount)}
+              onChange={(event) => setRepeatCount(Math.max(1, Math.min(50, Number(event.target.value) || 1)))}
             />
           </div>
         </div>

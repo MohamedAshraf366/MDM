@@ -33,6 +33,8 @@ export function AddDownloadDialog() {
   const [advanced, setAdvanced] = useState(false);
   const [tlsAllowInsecure, setTlsAllowInsecure] = useState(false);
   const [turboMode, setTurboMode] = useState(true);
+  const [connections, setConnections] = useState(16);
+  const [repeatCount, setRepeatCount] = useState(1);
   const [probe, setProbe] = useState<MediaProbeResult | null>(null);
   const [selectedFormatId, setSelectedFormatId] = useState('');
   const [probing, setProbing] = useState(false);
@@ -65,7 +67,10 @@ export function AddDownloadDialog() {
     setCookies('');
     setAdvanced(false);
     setTlsAllowInsecure(false);
+    setTlsAllowInsecure(false);
     setTurboMode(settings?.turboMode ?? true);
+    setConnections(16);
+    setRepeatCount(1);
     setProbe(null);
     setSelectedFormatId('');
     setProbing(false);
@@ -154,6 +159,8 @@ export function AddDownloadDialog() {
         scheduledAt: scheduledIso,
         autoOpen,
         turboMode,
+        connections,
+        repeatCount,
         referrer: referrer.trim(),
         sourcePageUrl: sourcePageUrl.trim(),
         cookies,
@@ -424,6 +431,36 @@ export function AddDownloadDialog() {
                 </p>
               </div>
               <Toggle checked={tlsAllowInsecure} onChange={setTlsAllowInsecure} label="Allow invalid TLS certificates" />
+            </div>
+            <div className="setting-row">
+              <div>
+                <strong>Most connections</strong>
+                <p>2–64. More connections can improve multi-part server speed.</p>
+              </div>
+              <div style={{ width: 80 }}>
+                <TextInput
+                  type="number"
+                  min={2}
+                  max={64}
+                  value={String(connections)}
+                  onChange={(event) => setConnections(Math.max(2, Math.min(64, Number(event.target.value) || 16)))}
+                />
+              </div>
+            </div>
+            <div className="setting-row">
+              <div>
+                <strong>Repeat count</strong>
+                <p>Download the file N times in sequence. 1 = once.</p>
+              </div>
+              <div style={{ width: 80 }}>
+                <TextInput
+                  type="number"
+                  min={1}
+                  max={50}
+                  value={String(repeatCount)}
+                  onChange={(event) => setRepeatCount(Math.max(1, Math.min(50, Number(event.target.value) || 1)))}
+                />
+              </div>
             </div>
             <div className="setting-row">
               <div>

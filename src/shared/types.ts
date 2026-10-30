@@ -54,6 +54,8 @@ export interface DownloadRecord {
   resumable: boolean;
   connections: number;
   turboMode?: boolean;
+  repeatCount?: number;
+  repeatTotal?: number;
   speedLimitBps: number;
   headers: Record<string, string>;
   cookies: string;
@@ -263,6 +265,7 @@ export interface AddDownloadRequest {
   autoOpen?: boolean;
   turboMode?: boolean;
   connections?: number;
+  repeatCount?: number;
   overrides?: {
     fileName?: string;
     mimeType?: string;

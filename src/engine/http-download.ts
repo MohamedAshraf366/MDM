@@ -610,7 +610,7 @@ export class HttpDownloadTask {
     const reasons: Record<TurboStopReason, string> = {
       plateau: 'more connections no longer increase the speed',
       ceiling: 'the connection limit was reached',
-      'server-limit': 'the server limited parallel connections',
+      'server-limit': 'the server or network pushed back on the extra connections (429/503, resets or timeouts)',
       'no-work': 'too little is left to split between more connections'
     };
     let lastAt = performance.now();

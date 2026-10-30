@@ -348,7 +348,7 @@ export class DownloadManager extends EventEmitter {
     if (scheduledAt && Number.isNaN(scheduledAt.getTime())) throw new Error('The scheduled time is not valid.');
     let status: DownloadStatus = 'queued';
     if (scheduledAt && scheduledAt.getTime() > Date.now()) status = 'scheduled';
-    else if (request.startNow === false) status = 'paused';
+    // Downloads always queue first; confirmation starts them.
 
     const record: DownloadRecord = {
       id: crypto.randomUUID(),
@@ -370,6 +370,8 @@ export class DownloadManager extends EventEmitter {
       resumable: true,
       connections,
       turboMode: request.turboMode ?? settings.turboMode,
+      repeatCount: request.repeatCount ?? 1,
+      repeatTotal: request.repeatCount ?? 1,
       speedLimitBps: speedLimit,
       headers,
       cookies: sanitizeCookies(request.cookies ?? ''),
@@ -1680,6 +1682,22 @@ export class DownloadManager extends EventEmitter {
           const error = await this.host.openPath(record.targetPath).catch(() => 'open failed');
           if (error) this.logger.warn('downloads', `Could not open ${record.fileName}: ${error}`);
         }
+      }
+      // Batch repeat: queue next copy if more remaining
+      if (record.repeatCount && record.repeatCount > 1) {
+        const total = record.repeatTotal ?? record.repeatCount;
+        const next = await this.addDownload({
+          url: record.url,
+          fileName: record.fileNameExplicit ? record.fileName : undefined,
+          destinationDir: record.destinationDir,
+          turboMode: record.turboMode,
+          connections: record.connections,
+          startNow: true,
+          repeatCount: record.repeatCount - 1,
+        } as AddDownloadRequest);
+        this.logger.info('downloads', `Batch repeat: queued copy ${record.repeatTotal ? record.repeatTotal - record.repeatCount + 2 : 2}/${record.repeatTotal || 1}.`);
+      } else if (record.repeatTotal && record.repeatTotal > 1) {
+        this.host.notify('Batch complete', `All ${record.repeatTotal} downloads finished.`);
       }
       return;
     }

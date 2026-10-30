@@ -643,8 +643,10 @@ function showMainWindow(route = 'downloads', downloadId?: string): void {
  * person in front of MDM must confirm the connection each time.
  */
 async function confirmExtensionPairing(confirmation: BrowserPairingConfirmation): Promise<boolean> {
-  if (process.env.MDM_SMOKE === '1') {
-    logger?.warn('bridge', 'Pairing was approved automatically because MDM_SMOKE=1.');
+  // Test hook, and only for an isolated profile: a custom MDM_USER_DATA_DIR has
+  // its own database and token, so this can never hand out the real profile's token.
+  if (process.env.MDM_SMOKE === '1' && process.env.MDM_USER_DATA_DIR) {
+    logger?.warn('bridge', 'Pairing was approved automatically (MDM_SMOKE=1 with an isolated profile).');
     return true;
   }
   showMainWindow('browser');
