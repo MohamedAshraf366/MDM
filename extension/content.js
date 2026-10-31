@@ -1015,6 +1015,8 @@
   function genericMediaResource(entry) {
     const name = entry.name;
     if (/\.(?:ts|m4s|aac|vtt|jpg|jpeg|png|gif|webp|css|js|svg)(?:$|[?#])/i.test(name)) return false;
+    // Allow all file-type downloads through MDM, not only video/audio.
+    if (/\.(?:bin|zip|tar|gz|rar|7z|bz2|xz|exe|msi|dmg|apk|iso|img|deb|rpm|pkg|pdf|doc|docx|xls|xlsx|ppt|pptx|txt|csv|json|xml|log)(?:$|[?#])/i.test(name)) return true;
     if (/\.(?:m3u8|mpd|mp4|webm|m4v|mov|mkv|flv|avi|mp3|m4a|ogg|opus|wav|flac)(?:$|[?#])/i.test(name)) return true;
     if (entry.initiatorType === 'video' || entry.initiatorType === 'audio') return true;
     if (entry.initiatorType === 'xmlhttprequest' || entry.initiatorType === 'fetch') {

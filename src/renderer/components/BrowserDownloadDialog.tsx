@@ -8,7 +8,7 @@ export function BrowserDownloadDialog() {
   const [destination, setDestination] = useState('');
   const [tlsAllowInsecure, setTlsAllowInsecure] = useState(false);
   const [turboMode, setTurboMode] = useState(true);
-  const [connections, setConnections] = useState(16);
+  const [connections, setConnections] = useState(32);
   const [repeatCount, setRepeatCount] = useState(1);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -18,7 +18,7 @@ export function BrowserDownloadDialog() {
     setDestination(browserDownload.destinationDir);
     setTlsAllowInsecure(false);
     setTurboMode(true);
-    setConnections(16);
+    setConnections(32);
     setRepeatCount(1);
     setSaving(false);
     setError('');
@@ -142,7 +142,7 @@ export function BrowserDownloadDialog() {
               min={2}
               max={64}
               value={String(connections)}
-              onChange={(event) => setConnections(Math.max(2, Math.min(64, Number(event.target.value) || 16)))}
+              onChange={(event) => setConnections(Math.max(2, Math.min(64, Number(event.target.value) || 32)))}
             />
           </div>
         </div>

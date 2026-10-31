@@ -336,7 +336,7 @@ export class DownloadManager extends EventEmitter {
     const queues = this.db.listQueues();
     const queueId = request.queueId && queues.some((queue) => queue.id === request.queueId) ? request.queueId : 'default';
     const now = new Date().toISOString();
-    const connections = clampInt(request.connections ?? settings.defaultConnections, 1, 32);
+    const connections = clampInt(request.connections ?? settings.defaultConnections, 1, 64);
     const speedLimit = clampInt(request.speedLimitBps ?? (request.speedLimitBps === 0 ? 0 : settings.defaultSpeedLimitBps), 0, 10_000_000_000);
     const checksumAlgorithm: ChecksumAlgorithm | '' = request.checksumAlgorithm ?? settings.checksumAlgorithm;
     const checksum = (request.checksum ?? '').trim();
@@ -1293,7 +1293,7 @@ export class DownloadManager extends EventEmitter {
     this.globalLimiter.setRate(settings.globalSpeedLimitBps);
     this.hostLimiter.setLimit(settings.maxConnectionsPerHost);
     setDirectAgentMaxSockets(settings.maxConnectionsPerHost);
-    const connections = clampInt(settings.defaultConnections, 1, 32);
+    const connections = clampInt(settings.defaultConnections, 1, 64);
     for (const record of this.getRecords()) {
       if (record.connections === connections || record.status === 'completed' || record.status === 'canceled') continue;
       record.connections = connections;

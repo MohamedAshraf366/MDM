@@ -173,17 +173,28 @@ async function handleBrowserDownload(item) {
   if (isBrowserOnlyDownload(item.url) || isBrowserOnlyDownload(target)) return;
   const tab = item.tabId >= 0 ? await api.tabs.get(item.tabId).catch(() => null) : null;
   const fileName = item.filename ? item.filename.split(/[\\/]/).pop() : undefined;
-  await api.downloads.pause(item.id).catch(() => undefined);
+  // Cancel the browser download immediately so the browser's own "Save As"
+  // window never appears. MDM's confirmation popup picks the location instead.
+  await api.downloads.cancel(item.id).catch(() => undefined);
   try {
     const result = await ext.capture(target, tab, { fileName });
     if (result?.ignored) {
-      await api.downloads.resume(item.id).catch(() => undefined);
+      await restartBrowserDownload(target, fileName);
       return;
     }
-    await api.downloads.cancel(item.id).catch(() => undefined);
   } catch (error) {
-    await api.downloads.resume(item.id).catch(() => undefined);
+    await restartBrowserDownload(target, fileName);
     await ext.notify('MDM could not capture a download', error.message);
+  }
+}
+
+async function restartBrowserDownload(url, fileName) {
+  try {
+    // Downloads started by the extension carry byExtensionId, so the listener
+    // above leaves this fallback to the browser instead of capturing it again.
+    await api.downloads.download({ url, filename: fileName, saveAs: false });
+  } catch {
+    /* The browser cannot restart it; the user can retry the link. */
   }
 }
 

@@ -225,13 +225,16 @@
       cookies: await cookiesFor(url),
       referrer: page,
       sourcePageUrl: page,
+      confirmDownload: true,
       autoStart: true
     };
     const result = await bridgeRequest('/download', { method: 'POST', body: payload }, config);
     if (result?.ignored) {
-      await notify('Download ignored', `A site rule (${result.rule?.name ?? 'MDM'}) ignored this download.`);
+      await notify('Download ignored', `A site rule (${result?.rule?.name ?? 'MDM'}) ignored this download.`);
     } else if (result?.held) {
       await notify('Download waiting for review', 'Open MDM to review the paused download.');
+    } else if (result?.pending) {
+      await notify('Confirm in MDM', 'Choose the download location and start the download in MDM.');
     }
     return result;
   }

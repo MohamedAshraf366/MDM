@@ -297,11 +297,11 @@ export function SettingsPage() {
         <div className="settings-stack">
           <Card title="Performance" subtitle="More connections can improve speed, but use more bandwidth.">
             <div className="settings-number-grid">
-              <Field label="Connections for every download" hint="1–32, including browser captures">
+              <Field label="Connections for every download" hint="1–64, including browser captures">
                 <TextInput
                   type="number"
                   min={1}
-                  max={32}
+                  max={64}
                   value={draft.defaultConnections}
                   onChange={(event) => update('defaultConnections', Number(event.target.value))}
                 />
