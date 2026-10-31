@@ -395,6 +395,7 @@ export class DownloadManager extends EventEmitter {
       startedAt: null,
       completedAt: null,
       autoOpen: Boolean(request.autoOpen),
+      autoDelete: Boolean(request.autoDelete),
       tlsAllowInsecure: Boolean(request.tlsAllowInsecure),
       mediaFormatJson,
       mediaState: '',
@@ -645,6 +646,7 @@ export class DownloadManager extends EventEmitter {
     if (update.checksum !== undefined) record.checksum = update.checksum.trim();
     if (update.checksumAlgorithm !== undefined) record.checksumAlgorithm = update.checksumAlgorithm;
     if (update.autoOpen !== undefined) record.autoOpen = update.autoOpen;
+    if (update.autoDelete !== undefined) record.autoDelete = update.autoDelete;
     if (record.checksum && !record.checksumAlgorithm) throw new Error('Choose a checksum algorithm for the checksum.');
     if (record.checksum && record.checksumAlgorithm && !validateChecksum(record.checksum, record.checksumAlgorithm)) {
       throw new Error('The checksum is not valid for the selected algorithm.');
@@ -1677,7 +1679,9 @@ export class DownloadManager extends EventEmitter {
       if (settings.notificationsEnabled && settings.notifyOnComplete) {
         this.host.notify('Download complete', record.fileName, record.id);
       }
-      if (record.autoOpen || settings.autoOpenCompleted) {
+      if (record.autoDelete) {
+        await this.deleteDownloadedFile(record);
+      } else if (record.autoOpen || settings.autoOpenCompleted) {
         if (isSafeToAutoOpen(record.fileName) && record.targetPath) {
           const error = await this.host.openPath(record.targetPath).catch(() => 'open failed');
           if (error) this.logger.warn('downloads', `Could not open ${record.fileName}: ${error}`);
@@ -1692,6 +1696,7 @@ export class DownloadManager extends EventEmitter {
           destinationDir: record.destinationDir,
           turboMode: record.turboMode,
           connections: record.connections,
+          autoDelete: record.autoDelete,
           startNow: true,
           repeatCount: record.repeatCount - 1,
         } as AddDownloadRequest);
@@ -1746,6 +1751,23 @@ export class DownloadManager extends EventEmitter {
       this.startNotifications.delete(record.id);
       this.emitLifecycle(record, 'cancelled');
       this.emitChanged();
+    }
+  }
+
+  private async deleteDownloadedFile(record: DownloadRecord): Promise<void> {
+    const target = record.targetPath;
+    if (!target) return;
+    try {
+      // Permanent delete: unlink bypasses the Recycle Bin, like Shift+Delete.
+      await fsp.unlink(target);
+      this.appendRecordLog(record, 'info', 'Downloaded file deleted permanently (auto delete).');
+      record.targetPath = null;
+      record.updatedAt = new Date().toISOString();
+      this.persist(record);
+      this.emit('updated', record);
+      this.emitChanged();
+    } catch (error) {
+      this.logger.warn('downloads', `Auto delete failed for ${record.fileName}: ${(error as Error).message}`);
     }
   }
 

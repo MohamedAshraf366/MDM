@@ -10,6 +10,7 @@ export function BrowserDownloadDialog() {
   const [turboMode, setTurboMode] = useState(true);
   const [connections, setConnections] = useState(32);
   const [repeatCount, setRepeatCount] = useState(1);
+  const [autoDelete, setAutoDelete] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
@@ -20,6 +21,7 @@ export function BrowserDownloadDialog() {
     setTurboMode(true);
     setConnections(32);
     setRepeatCount(1);
+    setAutoDelete(false);
     setSaving(false);
     setError('');
   }, [browserDownload]);
@@ -55,6 +57,7 @@ export function BrowserDownloadDialog() {
         turboMode,
         connections,
         repeatCount,
+        autoDelete,
         destinationDir: destination.trim() || undefined,
         startNow: true
       });
@@ -160,6 +163,13 @@ export function BrowserDownloadDialog() {
               onChange={(event) => setRepeatCount(Math.max(1, Math.min(50, Number(event.target.value) || 1)))}
             />
           </div>
+        </div>
+        <div className="setting-row">
+          <div>
+            <strong>Auto delete after download</strong>
+            <p>Permanently deletes the downloaded file when it finishes (like Shift+Delete, bypassing the Recycle Bin).</p>
+          </div>
+          <Toggle checked={autoDelete} onChange={setAutoDelete} label="Auto delete after download" />
         </div>
         {error ? <InlineNote tone="danger">{error}</InlineNote> : null}
       </div>

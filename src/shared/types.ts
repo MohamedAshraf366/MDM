@@ -79,6 +79,7 @@ export interface DownloadRecord {
   startedAt: string | null;
   completedAt: string | null;
   autoOpen: boolean;
+  autoDelete: boolean;
   mediaFormatJson: string;
   mediaState: string;
   sourcePageUrl: string;
@@ -263,6 +264,7 @@ export interface AddDownloadRequest {
   mediaEngine?: 'yt-dlp';
   tlsAllowInsecure?: boolean;
   autoOpen?: boolean;
+  autoDelete?: boolean;
   turboMode?: boolean;
   connections?: number;
   repeatCount?: number;
@@ -376,6 +378,7 @@ export interface UpdateDownloadOptions {
   checksum?: string;
   checksumAlgorithm?: ChecksumAlgorithm | '';
   autoOpen?: boolean;
+  autoDelete?: boolean;
 }
 
 export interface AddDownloadResult {

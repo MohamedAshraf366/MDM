@@ -26,6 +26,7 @@ export function AddDownloadDialog() {
   const [checksumAlgorithm, setChecksumAlgorithm] = useState<ChecksumAlgorithm | ''>('');
   const [checksum, setChecksum] = useState('');
   const [autoOpen, setAutoOpen] = useState(false);
+  const [autoDelete, setAutoDelete] = useState(false);
   const [referrer, setReferrer] = useState('');
   const [sourcePageUrl, setSourcePageUrl] = useState('');
   const [headers, setHeaders] = useState('');
@@ -61,6 +62,7 @@ export function AddDownloadDialog() {
     setChecksumAlgorithm(settings?.checksumAlgorithm ?? '');
     setChecksum('');
     setAutoOpen(false);
+    setAutoDelete(false);
     setReferrer('');
     setSourcePageUrl('');
     setHeaders('');
@@ -158,6 +160,7 @@ export function AddDownloadDialog() {
         startNow: startMode !== 'paused',
         scheduledAt: scheduledIso,
         autoOpen,
+        autoDelete,
         turboMode,
         connections,
         repeatCount,
@@ -421,6 +424,13 @@ export function AddDownloadDialog() {
                 <p>Executables and scripts are never opened automatically.</p>
               </div>
               <Toggle checked={autoOpen} onChange={setAutoOpen} label="Open when complete" />
+            </div>
+            <div className="setting-row">
+              <div>
+                <strong>Auto delete after download</strong>
+                <p>Permanently deletes the downloaded file when it finishes (like Shift+Delete, bypassing the Recycle Bin).</p>
+              </div>
+              <Toggle checked={autoDelete} onChange={setAutoDelete} label="Auto delete after download" />
             </div>
             <div className="setting-row">
               <div>

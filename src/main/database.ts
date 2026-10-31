@@ -77,6 +77,7 @@ interface DownloadRow {
   media_state_json: string;
   source_page_url: string;
   auto_open: number;
+  auto_delete: number;
   scheduled_at: string | null;
   created_at: string;
   updated_at: string;
@@ -194,6 +195,7 @@ export interface DownloadFields {
   mediaStateJson?: string;
   sourcePageUrl?: string;
   autoOpen?: boolean;
+  autoDelete?: boolean;
   tlsAllowInsecure?: boolean;
   scheduledAt?: string | null;
   startedAt?: string | null;
@@ -313,6 +315,7 @@ export class AppDatabase {
             media_state_json TEXT NOT NULL DEFAULT '',
             source_page_url TEXT NOT NULL DEFAULT '',
             auto_open INTEGER NOT NULL DEFAULT 0,
+            auto_delete INTEGER NOT NULL DEFAULT 0,
             scheduled_at TEXT,
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL,
@@ -405,6 +408,15 @@ export class AppDatabase {
           this.connection.exec('ALTER TABLE downloads ADD COLUMN tls_allow_insecure INTEGER NOT NULL DEFAULT 0;');
         }
         this.connection.prepare('INSERT INTO schema_migrations (version, applied_at) VALUES (4, ?)').run(now());
+      });
+    }
+    if (current < 5) {
+      this.transaction(() => {
+        const columns = this.connection.prepare('PRAGMA table_info(downloads)').all() as Array<{ name: string }>;
+        if (!columns.some((column) => column.name === 'auto_delete')) {
+          this.connection.exec('ALTER TABLE downloads ADD COLUMN auto_delete INTEGER NOT NULL DEFAULT 0;');
+        }
+        this.connection.prepare('INSERT INTO schema_migrations (version, applied_at) VALUES (5, ?)').run(now());
       });
     }
   }
@@ -506,9 +518,9 @@ export class AppDatabase {
           category, queue_id, status, priority, total_bytes, downloaded_bytes, resumable, connections, speed_limit,
           headers_enc, cookies_enc, referrer, mime_type, etag, last_modified, checksum, checksum_algorithm,
           checksum_status, error, error_code, retry_count, max_retries, speed_bps, eta_seconds,
-          media_format_json, media_state_json, source_page_url, auto_open, scheduled_at,
+          media_format_json, media_state_json, source_page_url, auto_open, auto_delete, scheduled_at,
           created_at, updated_at, started_at, completed_at, record_log_json
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         record.id,
@@ -550,6 +562,7 @@ export class AppDatabase {
         record.mediaState,
         record.sourcePageUrl,
         record.autoOpen ? 1 : 0,
+        record.autoDelete ? 1 : 0,
         record.scheduledAt,
         record.createdAt,
         record.updatedAt,
@@ -602,6 +615,7 @@ export class AppDatabase {
       mediaStateJson: 'media_state_json',
       sourcePageUrl: 'source_page_url',
       autoOpen: 'auto_open',
+      autoDelete: 'auto_delete',
       scheduledAt: 'scheduled_at',
       startedAt: 'started_at',
       completedAt: 'completed_at',
@@ -1067,6 +1081,7 @@ export class AppDatabase {
       startedAt: row.started_at,
       completedAt: row.completed_at,
       autoOpen: row.auto_open === 1,
+      autoDelete: row.auto_delete === 1,
       tlsAllowInsecure: row.tls_allow_insecure === 1,
       mediaFormatJson: row.media_format_json,
       mediaState: row.media_state_json,
