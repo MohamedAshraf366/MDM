@@ -162,7 +162,6 @@ export async function resolveTargetPath(
   const exists = await fileExists(desired);
   const reserved = Array.from(reservedPaths).some((p) => p.toLowerCase() === desired.toLowerCase());
   if (policy === 'overwrite') return desired;
-  if (policy === 'allow') return desired;
   if (policy === 'skip' && (exists || reserved)) {
     throw new DownloadError('A file with this name already exists.', 'FILE_EXISTS');
   }

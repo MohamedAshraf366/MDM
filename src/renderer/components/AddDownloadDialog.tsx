@@ -466,9 +466,9 @@ export function AddDownloadDialog() {
                 <TextInput
                   type="number"
                   min={1}
-                  max={50}
+                  max={9999}
                   value={String(repeatCount)}
-                  onChange={(event) => setRepeatCount(Math.max(1, Math.min(50, Number(event.target.value) || 1)))}
+                  onChange={(event) => setRepeatCount(Math.max(1, Math.min(9999, Number(event.target.value) || 1)))}
                 />
               </div>
             </div>

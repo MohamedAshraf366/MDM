@@ -249,10 +249,9 @@ export class DownloadManager extends EventEmitter {
       normalized = credentials.url;
       if (!headers.Authorization && !headers.authorization) headers.Authorization = credentials.authorization;
     }
-    const duplicate = this.db.findActiveByUrl(normalized);
-    if (duplicate && settings.duplicatePolicy !== 'allow') {
-      return { id: duplicate.id, duplicateOf: duplicate.id };
-    }
+    // Duplicate URLs are always allowed: the same file can be queued many times
+    // (batch repeat, simultaneous copies). The file-conflict policy decides
+    // whether each copy gets a "name (1)", overwrites, or is skipped.
 
     let kind: DownloadRecord['kind'] = normalized.startsWith('ftp:') ? 'ftp' : 'http';
     let mediaFormat: MediaFormat | null = null;

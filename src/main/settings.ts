@@ -221,7 +221,7 @@ export class SettingsService {
     s.maxRedirects = clampInt(s.maxRedirects, 0, 30, 10);
     s.bridgePort = clampInt(s.bridgePort, 1024, 65535, 41731);
     if (!['light', 'dark', 'system'].includes(s.theme)) s.theme = 'system';
-    if (!['rename', 'overwrite', 'skip'].includes(s.duplicatePolicy)) s.duplicatePolicy = 'rename';
+    if (!['rename', 'overwrite', 'skip', 'allow'].includes(s.duplicatePolicy)) s.duplicatePolicy = 'rename';
     if (!['any', 'ipv4', 'ipv6'].includes(s.ipVersion)) s.ipVersion = 'any';
     if (!['error', 'warn', 'info', 'debug'].includes(s.loggingLevel)) s.loggingLevel = 'info';
     if (!['none', 'system', 'manual'].includes(s.proxy.mode)) s.proxy.mode = 'none';
